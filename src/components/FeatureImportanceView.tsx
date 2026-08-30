@@ -169,12 +169,12 @@ export const FeatureImportanceView: React.FC = () => {
 
   const getCategoryBadge = (cat: string) => {
     switch (cat) {
-      case 'team': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+      case 'team': return 'bg-white/[0.06] text-neutral-300 border-white/[0.1]';
       case 'pitcher': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-      case 'bullpen': return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+      case 'bullpen': return 'bg-white/[0.06] text-neutral-300 border-white/[0.1]';
       case 'park': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-      case 'lineup': return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
-      default: return 'bg-zinc-800 text-zinc-300 border-zinc-700';
+      case 'lineup': return 'bg-white/[0.06] text-neutral-300 border-white/[0.1]';
+      default: return 'bg-neutral-800 text-neutral-300 border-neutral-700';
     }
   };
 
@@ -186,17 +186,17 @@ export const FeatureImportanceView: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-300">
                 VARIABLES & ARQUITECTURA DE FEATURES
               </span>
-              <span className="text-[9px] font-bold text-zinc-400 bg-zinc-950 px-2 py-0.5 rounded-full border border-white/[0.06]">
+              <span className="text-[9px] font-bold text-neutral-400 bg-neutral-950 px-2 py-0.5 rounded-full border border-white/[0.06]">
                 24 FACTORES STATCAST / SABERMETRICS
               </span>
             </div>
             <h2 className="text-base font-black text-white mt-1 tracking-tight">
               Ponderación e Importancia de Factores Predictivos
             </h2>
-            <p className="text-xs text-zinc-400 mt-1 max-w-2xl leading-relaxed font-sans">
+            <p className="text-xs text-neutral-400 mt-1 max-w-2xl leading-relaxed font-sans">
               Antes del inicio de cada partido, el modelo procesa 24 variables pre-partido. Aquí se muestra el peso Gain/Split asignado por los árboles Gradient Boosting.
             </p>
           </div>
@@ -205,8 +205,8 @@ export const FeatureImportanceView: React.FC = () => {
 
       {/* 5 Pillars */}
       <div className="bg-[#0e1017] border border-white/[0.08] rounded-2xl p-4 shadow-xs">
-        <h3 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-3 flex items-center gap-1.5">
-          <Layers className="w-3.5 h-3.5 text-cyan-400" />
+        <h3 className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 mb-3 flex items-center gap-1.5">
+          <Layers className="w-3.5 h-3.5 text-neutral-300" />
           5 Categorías de Variables
         </h3>
 
@@ -216,24 +216,24 @@ export const FeatureImportanceView: React.FC = () => {
             onClick={() => setSelectedCategory('team')}
             className={`p-3 rounded-xl border transition-all cursor-pointer ${
               selectedCategory === 'team'
-                ? 'bg-zinc-800 border-cyan-500 shadow-xs'
-                : 'bg-zinc-950 border-white/[0.06] hover:border-white/10'
+                ? 'bg-neutral-800 border-white shadow-xs'
+                : 'bg-neutral-950 border-white/[0.06] hover:border-white/10'
             }`}
           >
             <div className="flex items-center justify-between text-xs mb-1">
-              <Shield className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="text-[10px] font-bold text-cyan-400">38% PESO</span>
+              <Shield className="w-3.5 h-3.5 text-neutral-300" />
+              <span className="text-[10px] font-bold text-neutral-300">38% PESO</span>
             </div>
             <div className="font-bold text-white text-xs">Rendimiento Equipo</div>
-            <p className="text-[10px] text-zinc-500 mt-0.5 font-sans">Diferencial de carreras y win%.</p>
+            <p className="text-[10px] text-neutral-500 mt-0.5 font-sans">Diferencial de carreras y win%.</p>
           </div>
 
           <div
             onClick={() => setSelectedCategory('pitcher')}
             className={`p-3 rounded-xl border transition-all cursor-pointer ${
               selectedCategory === 'pitcher'
-                ? 'bg-zinc-800 border-cyan-500 shadow-xs'
-                : 'bg-zinc-950 border-white/[0.06] hover:border-white/10'
+                ? 'bg-neutral-800 border-white shadow-xs'
+                : 'bg-neutral-950 border-white/[0.06] hover:border-white/10'
             }`}
           >
             <div className="flex items-center justify-between text-xs mb-1">
@@ -241,15 +241,15 @@ export const FeatureImportanceView: React.FC = () => {
               <span className="text-[10px] font-bold text-emerald-400">32% PESO</span>
             </div>
             <div className="font-bold text-white text-xs">Pitcheo Abridor</div>
-            <p className="text-[10px] text-zinc-500 mt-0.5 font-sans">ERA, K/9 y control K/BB.</p>
+            <p className="text-[10px] text-neutral-500 mt-0.5 font-sans">ERA, K/9 y control K/BB.</p>
           </div>
 
           <div
             onClick={() => setSelectedCategory('park')}
             className={`p-3 rounded-xl border transition-all cursor-pointer ${
               selectedCategory === 'park'
-                ? 'bg-zinc-800 border-cyan-500 shadow-xs'
-                : 'bg-zinc-950 border-white/[0.06] hover:border-white/10'
+                ? 'bg-neutral-800 border-white shadow-xs'
+                : 'bg-neutral-950 border-white/[0.06] hover:border-white/10'
             }`}
           >
             <div className="flex items-center justify-between text-xs mb-1">
@@ -257,39 +257,39 @@ export const FeatureImportanceView: React.FC = () => {
               <span className="text-[10px] font-bold text-amber-400">14% PESO</span>
             </div>
             <div className="font-bold text-white text-xs">Estadio y Parque</div>
-            <p className="text-[10px] text-zinc-500 mt-0.5 font-sans">Altitud, dimensiones y clima.</p>
+            <p className="text-[10px] text-neutral-500 mt-0.5 font-sans">Altitud, dimensiones y clima.</p>
           </div>
 
           <div
             onClick={() => setSelectedCategory('bullpen')}
             className={`p-3 rounded-xl border transition-all cursor-pointer ${
               selectedCategory === 'bullpen'
-                ? 'bg-zinc-800 border-cyan-500 shadow-xs'
-                : 'bg-zinc-950 border-white/[0.06] hover:border-white/10'
+                ? 'bg-neutral-800 border-white shadow-xs'
+                : 'bg-neutral-950 border-white/[0.06] hover:border-white/10'
             }`}
           >
             <div className="flex items-center justify-between text-xs mb-1">
-              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-              <span className="text-[10px] font-bold text-purple-400">10% PESO</span>
+              <Sparkles className="w-3.5 h-3.5 text-neutral-300" />
+              <span className="text-[10px] font-bold text-neutral-300">10% PESO</span>
             </div>
             <div className="font-bold text-white text-xs">Bullpen & Relevo</div>
-            <p className="text-[10px] text-zinc-500 mt-0.5 font-sans">Cierre de juegos (7ma a 9na).</p>
+            <p className="text-[10px] text-neutral-500 mt-0.5 font-sans">Cierre de juegos (7ma a 9na).</p>
           </div>
 
           <div
             onClick={() => setSelectedCategory('lineup')}
             className={`p-3 rounded-xl border transition-all cursor-pointer ${
               selectedCategory === 'lineup'
-                ? 'bg-zinc-800 border-cyan-500 shadow-xs'
-                : 'bg-zinc-950 border-white/[0.06] hover:border-white/10'
+                ? 'bg-neutral-800 border-white shadow-xs'
+                : 'bg-neutral-950 border-white/[0.06] hover:border-white/10'
             }`}
           >
             <div className="flex items-center justify-between text-xs mb-1">
-              <Users className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="text-[10px] font-bold text-cyan-400">6% PESO</span>
+              <Users className="w-3.5 h-3.5 text-neutral-300" />
+              <span className="text-[10px] font-bold text-neutral-300">6% PESO</span>
             </div>
             <div className="font-bold text-white text-xs">Alineación & OPS</div>
-            <p className="text-[10px] text-zinc-500 mt-0.5 font-sans">Poder real de los 9 titulares.</p>
+            <p className="text-[10px] text-neutral-500 mt-0.5 font-sans">Poder real de los 9 titulares.</p>
           </div>
 
         </div>
@@ -306,8 +306,8 @@ export const FeatureImportanceView: React.FC = () => {
                 onClick={() => setSelectedCategory(cat.id)}
                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                   selectedCategory === cat.id
-                    ? 'bg-zinc-800 text-white shadow-xs border border-white/10'
-                    : 'bg-zinc-950 text-zinc-400 hover:text-zinc-200 border border-transparent'
+                    ? 'bg-neutral-800 text-white shadow-xs border border-white/10'
+                    : 'bg-neutral-950 text-neutral-400 hover:text-neutral-200 border border-transparent'
                 }`}
               >
                 {cat.label}
@@ -316,13 +316,13 @@ export const FeatureImportanceView: React.FC = () => {
           </div>
 
           <div className="relative w-full md:w-56">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
             <input
               type="text"
               placeholder="Buscar variable..."
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              className="w-full bg-zinc-950 border border-white/[0.08] rounded-lg pl-8 pr-3 py-1 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-hidden focus:border-cyan-500 font-mono"
+              className="w-full bg-neutral-950 border border-white/[0.08] rounded-lg pl-8 pr-3 py-1 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-hidden focus:border-white font-mono"
             />
           </div>
 
@@ -337,11 +337,11 @@ export const FeatureImportanceView: React.FC = () => {
               <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
               Ranking de Variables Explicadas
             </h3>
-            <p className="text-[10px] text-zinc-500 font-sans">
+            <p className="text-[10px] text-neutral-500 font-sans">
               Haz clic en cualquier variable para ver su definición y su impacto en el modelo.
             </p>
           </div>
-          <span className="text-[10px] text-zinc-500">
+          <span className="text-[10px] text-neutral-500">
             {filteredFeatures.length} variables
           </span>
         </div>
@@ -362,22 +362,22 @@ export const FeatureImportanceView: React.FC = () => {
                 onClick={() => setExpandedFeature(isExpanded ? null : item.feature)}
                 className={`rounded-xl border transition-all cursor-pointer ${
                   isExpanded
-                    ? 'bg-zinc-950 border-cyan-500/40 shadow-xs'
-                    : 'bg-zinc-950 border-white/[0.04] hover:border-white/10'
+                    ? 'bg-neutral-950 border-white/[0.14] shadow-xs'
+                    : 'bg-neutral-950 border-white/[0.04] hover:border-white/10'
                 }`}
               >
                 <div className="p-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                     
                     <div className="flex items-center gap-2.5">
-                      <span className="w-5 h-5 rounded bg-zinc-900 flex items-center justify-center text-[10px] font-bold text-zinc-400 shrink-0 border border-white/[0.04]">
+                      <span className="w-5 h-5 rounded bg-neutral-900 flex items-center justify-center text-[10px] font-bold text-neutral-400 shrink-0 border border-white/[0.04]">
                         #{idx + 1}
                       </span>
                       <div>
                         <div className="text-xs font-bold text-white">
                           {item.label_es}
                         </div>
-                        <div className="text-[10px] text-zinc-500 mt-0.5 font-sans">
+                        <div className="text-[10px] text-neutral-500 mt-0.5 font-sans">
                           {explanation.what}
                         </div>
                       </div>
@@ -387,41 +387,41 @@ export const FeatureImportanceView: React.FC = () => {
                       <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${getCategoryBadge(item.category)}`}>
                         {item.category.toUpperCase()}
                       </span>
-                      <span className="text-xs font-bold text-cyan-300 bg-zinc-900 border border-white/10 px-2 py-0.2 rounded">
+                      <span className="text-xs font-bold text-white bg-neutral-900 border border-white/10 px-2 py-0.2 rounded">
                         {item.importance}
                       </span>
-                      <button className="text-zinc-500 p-0.5">
-                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-cyan-400" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      <button className="text-neutral-500 p-0.5">
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-neutral-300" /> : <ChevronDown className="w-3.5 h-3.5" />}
                       </button>
                     </div>
 
                   </div>
 
-                  <div className="h-1 bg-zinc-900 rounded-full overflow-hidden mt-2">
+                  <div className="h-1 bg-neutral-900 rounded-full overflow-hidden mt-2">
                     <div
-                      className="h-full bg-cyan-400 rounded-full transition-all duration-300"
+                      className="h-full bg-white rounded-full transition-all duration-300"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
                 </div>
 
                 {isExpanded && (
-                  <div className="px-3 pb-3 pt-1 border-t border-white/[0.06] bg-zinc-950 text-xs space-y-2 animate-in fade-in duration-150 font-sans">
+                  <div className="px-3 pb-3 pt-1 border-t border-white/[0.06] bg-neutral-950 text-xs space-y-2 animate-in fade-in duration-150 font-sans">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1.5">
-                      <div className="p-2.5 bg-zinc-900 rounded-lg border border-white/[0.04]">
-                        <div className="font-bold text-cyan-300 flex items-center gap-1 mb-1 text-xs">
-                          <HelpCircle className="w-3 h-3 text-cyan-400" /> Impacto en KAL:
+                      <div className="p-2.5 bg-neutral-900 rounded-lg border border-white/[0.04]">
+                        <div className="font-bold text-white flex items-center gap-1 mb-1 text-xs">
+                          <HelpCircle className="w-3 h-3 text-neutral-300" /> Impacto en KAL:
                         </div>
-                        <p className="text-zinc-400 text-[11px] leading-relaxed">
+                        <p className="text-neutral-400 text-[11px] leading-relaxed">
                           {explanation.why}
                         </p>
                       </div>
 
-                      <div className="p-2.5 bg-zinc-900 rounded-lg border border-white/[0.04]">
+                      <div className="p-2.5 bg-neutral-900 rounded-lg border border-white/[0.04]">
                         <div className="font-bold text-emerald-400 flex items-center gap-1 mb-1 text-xs">
                           <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Caso Real:
                         </div>
-                        <p className="text-zinc-400 text-[11px] leading-relaxed">
+                        <p className="text-neutral-400 text-[11px] leading-relaxed">
                           {explanation.example}
                         </p>
                       </div>

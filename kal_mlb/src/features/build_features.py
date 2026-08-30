@@ -33,6 +33,53 @@ RAW = PROJECT_ROOT / "data" / "raw"
 PROCESSED = PROJECT_ROOT / "data" / "processed"
 PROCESSED.mkdir(parents=True, exist_ok=True)
 
+PITCHER_HAND_CACHE = RAW / "pitcher_hands.json"
+
+
+def attach_pitcher_hand(games: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adds home_sp_throws_L / away_sp_throws_L (1 if lefty, 0 if righty) and
+    sp_hand_same (1 if both starters throw with the same hand) using the
+    local cache built by scripts/build_pitcher_hand_cache.py.
+
+    Degrades gracefully: if the cache doesn't exist yet (e.g. running in an
+    environment with no network access to statsapi.mlb.com), this is a
+    no-op and the columns simply won't be in feature_cols downstream —
+    it will NOT crash the pipeline.
+    """
+    if not PITCHER_HAND_CACHE.exists():
+        logger.warning(
+            "%s no existe todavía — corre scripts/build_pitcher_hand_cache.py "
+            "para habilitar la feature de mano del abridor. Se omite por ahora.",
+            PITCHER_HAND_CACHE,
+        )
+        return games
+
+    import json
+
+    hand_map = {int(k): v for k, v in json.loads(PITCHER_HAND_CACHE.read_text()).items()}
+    if not hand_map:
+        return games
+
+    games = games.copy()
+    games["home_sp_throws_L"] = games["home_starter_id"].map(hand_map).eq("L").astype("float")
+    games["away_sp_throws_L"] = games["away_starter_id"].map(hand_map).eq("L").astype("float")
+
+    # Only mark same/different hand when BOTH hands are actually known —
+    # otherwise a missing value would silently look like "different hand".
+    both_known = games["home_starter_id"].map(hand_map).notna() & games[
+        "away_starter_id"
+    ].map(hand_map).notna()
+    games["sp_hand_same"] = np.where(
+        both_known,
+        (games["home_sp_throws_L"] == games["away_sp_throws_L"]).astype("float"),
+        np.nan,
+    )
+
+    coverage = both_known.mean() if len(games) else 0.0
+    logger.info("Feature de mano del abridor: %.1f%% de partidos con ambos abridores conocidos", coverage * 100)
+    return games
+
 
 def load_schedules(seasons: list[int] | None = None) -> pd.DataFrame:
     seasons = seasons or [2023, 2024, 2025, 2026]
@@ -499,6 +546,12 @@ def build_game_features(
     pitching = load_pitching_stats()
     games = attach_season_stats(games, pitching, pd.DataFrame())
 
+    # Mano del abridor (L/R) + matchup — no-op si el cache no existe todavía.
+    # Se hace DESPUÉS de attach_season_stats a propósito: esa función tiene un
+    # rename genérico que agarra cualquier columna "sp_*" y le pega "_home",
+    # lo que se comía sp_hand_same/sp_throws_L si se llamaba antes.
+    games = attach_pitcher_hand(games)
+
     # Context features
     games["is_day"] = (games["day_night"] == "day").astype(int)
     games["rest_diff"] = games["home_rest"] - games["away_rest"]
@@ -568,6 +621,10 @@ def build_game_features(
         "away_sp_opp_rpg_l5",
         "home_sp_qs_l10",
         "away_sp_qs_l10",
+        # Mano del abridor / matchup (requiere cache poblado, ver attach_pitcher_hand)
+        "home_sp_throws_L",
+        "away_sp_throws_L",
+        "sp_hand_same",
         # Prior season pitcher quality
         "sp_era_prev_home",
         "sp_era_prev_away",

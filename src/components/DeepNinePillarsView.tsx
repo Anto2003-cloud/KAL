@@ -89,7 +89,15 @@ export const DeepNinePillarsView: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      
+
+      {/* Honest disclaimer: this view runs on illustrative sample data, not the real trained model */}
+      <div className="bg-white/[0.04] border border-white/[0.1] rounded-2xl px-4 py-3 flex items-start gap-2.5">
+        <AlertTriangle className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-neutral-400 leading-relaxed">
+          <span className="text-neutral-200 font-semibold">Modo demostrativo:</span> los partidos y métricas de esta vista (nombres de abridores, ERA, xwOBA, etc.) son datos de ejemplo para ilustrar cómo se vería el desglose de 9 factores — no provienen de partidos reales ni del modelo LightGBM entrenado. El simulador manual de abajo sí es funcional, pero opera sobre esos mismos valores de ejemplo.
+        </p>
+      </div>
+
       {/* SpaceX Engineering Banner: 9-Pillars Architecture Overview */}
       <div className="bg-[#0e1017] border border-white/[0.08] rounded-2xl p-5 text-white shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">

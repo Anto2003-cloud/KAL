@@ -212,6 +212,65 @@ class MLBDataFetcher:
         people = data.get("people", [])
         return people[0] if people else {}
 
+    def get_pitcher_hands_bulk(self, person_ids: list[int]) -> dict[int, str]:
+        """
+        Fetch throwing hand ('L' or 'R') for a list of pitcher IDs.
+        Uses the bulk /people?personIds=... endpoint (up to ~100 IDs per call
+        is safe in practice; MLB doesn't publish a hard limit but large batches
+        can 400 — chunk defensively at 50).
+        Returns {person_id: 'L'|'R'}. IDs that fail to resolve are omitted,
+        not silently defaulted, so callers can tell the difference between
+        "known righty" and "unknown".
+        """
+        ids = sorted({int(i) for i in person_ids if pd.notna(i)})
+        hands: dict[int, str] = {}
+        chunk = 50
+        for i in range(0, len(ids), chunk):
+            batch = ids[i : i + chunk]
+            try:
+                data = self._get("people", {"personIds": ",".join(str(x) for x in batch)})
+            except requests.RequestException as e:
+                logger.warning("Fallo consultando mano de %d lanzadores: %s", len(batch), e)
+                continue
+            for person in data.get("people", []):
+                pid = person.get("id")
+                code = (person.get("pitchHand") or {}).get("code")
+                if pid is not None and code in ("L", "R"):
+                    hands[pid] = code
+        logger.info("Mano obtenida para %d/%d lanzadores", len(hands), len(ids))
+        return hands
+
+    def build_pitcher_hand_cache(
+        self, person_ids: list[int], cache_filename: str = "pitcher_hands.json"
+    ) -> Path:
+        """
+        Fetch + merge into a persistent cache file so build_features.py can
+        attach handedness without re-hitting the API on every run. Existing
+        entries are kept; only unknown IDs are fetched.
+        """
+        cache_path = self.raw_dir / cache_filename
+        existing: dict[str, str] = {}
+        if cache_path.exists():
+            existing = json.loads(cache_path.read_text(encoding="utf-8"))
+
+        known_ids = {int(k) for k in existing.keys()}
+        missing = [pid for pid in person_ids if pd.notna(pid) and int(pid) not in known_ids]
+        if missing:
+            new_hands = self.get_pitcher_hands_bulk(missing)
+            existing.update({str(k): v for k, v in new_hands.items()})
+            cache_path.write_text(
+                json.dumps(existing, indent=2, sort_keys=True), encoding="utf-8"
+            )
+            logger.info(
+                "Cache de mano de lanzadores actualizado: %d nuevos, %d total → %s",
+                len(new_hands),
+                len(existing),
+                cache_path,
+            )
+        else:
+            logger.info("Cache de mano de lanzadores ya cubre los %d IDs pedidos", len(person_ids))
+        return cache_path
+
     def get_player_stats(
         self,
         person_id: int,

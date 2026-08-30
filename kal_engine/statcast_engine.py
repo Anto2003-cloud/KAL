@@ -1,5 +1,24 @@
 """
 KAL MLB - 9-Pillar High-Power Engine
+
+⚠️  ESTE MÓDULO NO ES UN FETCHER DE DATOS REALES.
+
+Es una calculadora de "edge" que toma un dict `match` con ~20 métricas
+(Stuff+, xwOBA, barrel%, etc.) y, si no vienen, usa VALORES POR DEFECTO
+FIJOS y CONSTANTES (ej. home_sp_stuff_plus=104, away=98 siempre) más unos
+coeficientes lineales puestos a mano (*0.005, *0.85, *0.018...) sin
+backtesting. No consulta Statcast, Baseball Savant, ni ninguna API — nada
+en `kal_mlb/` lo importa ni lo llama (ver grep, cero referencias).
+
+El panel "Modelo (9 Factores)" del frontend (DeepNinePillarsView.tsx) usa
+datos de muestra hardcodeados (src/data/ninePillarsData.ts), no la salida
+de este archivo ni del modelo LightGBM real entrenado en kal_mlb/.
+
+Antes de "conectar" esto a algo real, hace falta reemplazarlo por un
+fetcher genuino (p.ej. pybaseball contra Baseball Savant) que traiga
+xwOBA/barrel%/hard-hit% reales por equipo y por rango de fechas — eso es
+trabajo nuevo, no cablear este archivo.
+
 Pitcher + Bateadores + Bullpen + Lesiones + Lineup + Statcast + Matchup + Parque + Clima
 -> KAL Model -> Winner + Win Probability + Multi-Factor Explainability -> Outcome -> Learning
 """

@@ -36,7 +36,15 @@ export const ActiveLearningView: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      
+
+      {/* Honest disclaimer: bankroll/ROI/post-mortem numbers below are illustrative, not real tracked results */}
+      <div className="bg-white/[0.04] border border-white/[0.1] rounded-2xl px-4 py-3 flex items-start gap-2.5">
+        <ShieldCheck className="w-4 h-4 text-neutral-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-neutral-400 leading-relaxed">
+          <span className="text-neutral-200 font-semibold">Modo demostrativo:</span> el balance, ROI, Kelly, Sharpe y los diagnósticos post-mortem de esta vista son datos de ejemplo, no un registro real de apuestas o resultados. El botón "Ejecutar bucle bayesiano" tampoco recalibra el modelo real — es una simulación visual. El tracking real y verificado (5-0, datos genuinos) está en la pestaña de Métricas.
+        </p>
+      </div>
+
       {/* Header Banner: Continuous Learning Loop */}
       <div className="bg-[#0e1017] border border-white/[0.08] rounded-2xl p-5 text-white shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">

@@ -1,0 +1,25 @@
+{
+  "updated_at": "2026-08-30T01:46:37.854765",
+  "n_graded": 5,
+  "n_pending": 14,
+  "hits": 5,
+  "misses": 0,
+  "accuracy": 1.0,
+  "record": "5-0",
+  "units_flat": 5.0,
+  "by_confidence": {
+    "LOW": {
+      "n": 3,
+      "hits": 3,
+      "acc": 1.0
+    },
+    "MEDIUM": {
+      "n": 2,
+      "hits": 2,
+      "acc": 1.0
+    }
+  },
+  "best_streak": 5,
+  "worst_streak": 0,
+  "last_10": "5-0"
+}

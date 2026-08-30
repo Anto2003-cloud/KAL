@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>KAL · MLB Predictor</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --card: #121a2b;
+    --line: #1e2a44;
+    --text: #e8eefc;
+    --muted: #8b9bb8;
+    --accent: #3b82f6;
+    --high: #22c55e;
+    --med: #eab308;
+    --low: #64748b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 10% -10%, #1a2744 0%, var(--bg) 55%);
+    color: var(--text); min-height: 100vh;
+  }
+  header {
+    padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between;
+  }
+  .logo { font-weight: 800; letter-spacing: 0.04em; font-size: 1.35rem; }
+  .logo span { color: var(--accent); }
+  .sub { color: var(--muted); font-size: 0.9rem; }
+  main { max-width: 1200px; margin: 0 auto; padding: 1.25rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 1rem 1.1rem;
+  }
+  .card .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .card .value { font-size: 1.45rem; font-weight: 700; margin-top: 0.25rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.75rem 0 1rem; }
+  .chip {
+    color: var(--muted); text-decoration: none; border: 1px solid var(--line);
+    padding: 0.35rem 0.7rem; border-radius: 999px; font-size: 0.85rem; background: #0e1626;
+  }
+  .chip.active { color: #fff; background: var(--accent); border-color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
+  th { text-align: left; padding: 0.75rem 1rem; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--line); }
+  td { padding: 0.9rem 1rem; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 0.92rem; }
+  tr:last-child td { border-bottom: none; }
+  .teams { font-weight: 700; font-size: 1.05rem; }
+  .at { color: var(--muted); font-weight: 500; }
+  .starters { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; }
+  .pick strong { color: #fff; font-size: 1.05rem; }
+  .bar { height: 8px; background: #1a2438; border-radius: 99px; overflow: hidden; width: 140px; }
+  .bar .home { height: 100%; background: linear-gradient(90deg, var(--accent), #60a5fa); }
+  .pct { color: var(--muted); font-size: 0.78rem; margin-top: 0.25rem; }
+  .badge {
+    display: inline-block; padding: 0.2rem 0.55rem; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em;
+  }
+  .badge.high { background: rgba(34,197,94,.15); color: var(--high); }
+  .badge.med { background: rgba(234,179,8,.15); color: var(--med); }
+  .badge.low { background: rgba(100,116,139,.2); color: #94a3b8; }
+  .exp { color: #b6c3db; font-size: 0.82rem; line-height: 1.45; max-width: 420px; }
+  footer { text-align: center; color: var(--muted); font-size: 0.8rem; padding: 2rem 1rem; }
+  .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    padding: 0.55rem 0.9rem; font-weight: 600; cursor: pointer; text-decoration: none; font-size: 0.9rem;
+  }
+  .btn.secondary { background: #1e2a44; }
+  @media (max-width: 800px) {
+    .exp { max-width: 100%; }
+    table, thead, tbody, th, td, tr { display: block; }
+    th { display: none; }
+    td { border-bottom: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="logo">KAL <span>MLB</span></div>
+    <div class="sub">Predictor · tracking · champion model</div>
+  </div>
+  <div class="actions">
+    <a class="btn secondary" href="/api/panel">API panel</a>
+    <a class="btn" href="/?date=2026-08-30">Refresh</a>
+  </div>
+</header>
+<main>
+  <div class="grid">
+    <div class="card"><div class="label">Récord</div><div class="value">5-0</div></div>
+    <div class="card"><div class="label">Acierto</div><div class="value">100.0%</div></div>
+    <div class="card"><div class="label">Calificados</div><div class="value">5</div></div>
+    <div class="card"><div class="label">Pendientes</div><div class="value">14</div></div>
+    <div class="card"><div class="label">Unidades</div><div class="value">5.0</div></div>
+    <div class="card"><div class="label">Champion WF</div><div class="value">55.2%</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:1rem">
+    <div class="label">Intel último refresh</div>
+    <div class="sub" style="margin-top:0.35rem">
+      2026-08-30T01:34:22.005112 · rosters 1366 · tx 1986 · schedule 73
+    </div>
+  </div>
+
+  <div class="label">Fecha de predicciones</div>
+  <div class="chips"><a class="chip active" href="/?date=2026-08-30">2026-08-30</a> <a class="chip " href="/?date=2026-08-29">2026-08-29</a></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Partido</th>
+        <th>Pick</th>
+        <th>Probabilidades</th>
+        <th>Confianza</th>
+        <th>Análisis</th>
+      </tr>
+    </thead>
+    <tbody>
+      
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">MIA <span class="at">@</span> WSH</div>
+                <div class="starters">Janson Junk vs Andrew Alvarez</div>
+              </td>
+              <td class="pick"><strong>WSH</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:50.6%"></div>
+                </div>
+                <div class="pct">WSH 50.6% · MIA 49.4%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: WSH | WSH 50.6% — MIA 49.4% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Janson Junk (MIA) vs Andrew Alvarez (WSH)<br>  ERA temporada previa: Janson Junk 4.17 | Andrew Alvarez 2.31<br>Parque: factor 1.083 (ofensivo)<br>Factores: partido muy equilibrado en win%, forma y abridores.<br>Lineup WSH [projected_or_missing]: pendiente de MLB<br>Lineup MIA [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">SEA <span class="at">@</span> TOR</div>
+                <div class="starters">Logan Gilbert vs Max Scherzer</div>
+              </td>
+              <td class="pick"><strong>SEA</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:45.7%"></div>
+                </div>
+                <div class="pct">TOR 45.7% · SEA 54.3%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: SEA | TOR 45.7% — SEA 54.3% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Logan Gilbert (SEA) vs Max Scherzer (TOR)<br>  ERA temporada previa: Logan Gilbert 3.51 | Max Scherzer 4.98<br>Factores a favor del pick / contexto: Más lesiones corto plazo en TOR (burden 5.2 vs 3.4)<br>Lineup TOR [projected_or_missing]: pendiente de MLB<br>Lineup SEA [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">SD <span class="at">@</span> TB</div>
+                <div class="starters">Robbie Ray vs Drew Rasmussen</div>
+              </td>
+              <td class="pick"><strong>SD</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:49.9%"></div>
+                </div>
+                <div class="pct">TB 49.9% · SD 50.1%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: SD | TB 49.9% — SD 50.1% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Robbie Ray (SD) vs Drew Rasmussen (TB)<br>  ERA temporada previa: Robbie Ray 3.65 | Drew Rasmussen 2.76<br>Factores: partido muy equilibrado en win%, forma y abridores.<br>Lineup TB [projected_or_missing]: pendiente de MLB<br>Lineup SD [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">PIT <span class="at">@</span> STL</div>
+                <div class="starters">Braxton Ashcraft vs Matthew Liberatore</div>
+              </td>
+              <td class="pick"><strong>PIT</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:46.5%"></div>
+                </div>
+                <div class="pct">STL 46.5% · PIT 53.5%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: PIT | STL 46.5% — PIT 53.5% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Braxton Ashcraft (PIT) vs Matthew Liberatore (STL)<br>  ERA temporada previa: Braxton Ashcraft 2.71 | Matthew Liberatore 4.21<br>Factores a favor del pick / contexto: Más lesiones corto plazo en STL (burden 6.4 vs 2.2)<br>Lineup STL [projected_or_missing]: pendiente de MLB<br>Lineup PIT [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">BOS <span class="at">@</span> NYY</div>
+                <div class="starters">Ranger Suarez vs Will Warren</div>
+              </td>
+              <td class="pick"><strong>NYY</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:51.8%"></div>
+                </div>
+                <div class="pct">NYY 51.8% · BOS 48.2%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: NYY | NYY 51.8% — BOS 48.2% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Ranger Suarez (BOS) vs Will Warren (NYY)<br>  ERA temporada previa: Ranger Suarez 3.16 | Will Warren 4.63<br>Factores: partido muy equilibrado en win%, forma y abridores.<br>Lineup NYY [projected_or_missing]: pendiente de MLB<br>Lineup BOS [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">HOU <span class="at">@</span> NYM</div>
+                <div class="starters">Ethan Pecko vs Zac Thornton</div>
+              </td>
+              <td class="pick"><strong>HOU</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:48.6%"></div>
+                </div>
+                <div class="pct">NYM 48.6% · HOU 51.4%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: HOU | NYM 48.6% — HOU 51.4% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Ethan Pecko (HOU) vs Zac Thornton (NYM)<br>Factores a favor del pick / contexto: Más lesiones corto plazo en NYM (burden 3.0 vs 1.0)<br>Lineup NYM [projected_or_missing]: pendiente de MLB<br>Lineup HOU [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">CWS <span class="at">@</span> MIN</div>
+                <div class="starters">Jordan Hicks vs Zebby Matthews</div>
+              </td>
+              <td class="pick"><strong>MIN</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:51.9%"></div>
+                </div>
+                <div class="pct">MIN 51.9% · CWS 48.1%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: MIN | MIN 51.9% — CWS 48.1% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Jordan Hicks (CWS) vs Zebby Matthews (MIN)<br>  ERA temporada previa: Jordan Hicks 6.95 | Zebby Matthews 5.56<br>Factores a favor del pick / contexto: Más lesiones corto plazo en CWS (burden 5.4 vs 2.0)<br>Lineup MIN [projected_or_missing]: pendiente de MLB<br>Lineup CWS [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">TEX <span class="at">@</span> MIL</div>
+                <div class="starters">Kumar Rocker vs Dustin May</div>
+              </td>
+              <td class="pick"><strong>MIL</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:52.2%"></div>
+                </div>
+                <div class="pct">MIL 52.2% · TEX 47.8%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: MIL | MIL 52.2% — TEX 47.8% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Kumar Rocker (TEX) vs Dustin May (MIL)<br>  ERA temporada previa: Kumar Rocker 5.74 | Dustin May 4.96<br>Factores: partido muy equilibrado en win%, forma y abridores.<br>Lineup MIL [projected_or_missing]: pendiente de MLB<br>Lineup TEX [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">PHI <span class="at">@</span> LAA</div>
+                <div class="starters">Zack Wheeler vs Yusei Kikuchi</div>
+              </td>
+              <td class="pick"><strong>PHI</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:45.8%"></div>
+                </div>
+                <div class="pct">LAA 45.8% · PHI 54.2%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: PHI | LAA 45.8% — PHI 54.2% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Zack Wheeler (PHI) vs Yusei Kikuchi (LAA)<br>  ERA temporada previa: Zack Wheeler 2.71 | Yusei Kikuchi 3.99<br>Factores a favor del pick / contexto: Más lesiones corto plazo en LAA (burden 4.0 vs 2.2)<br>Lineup LAA [projected_or_missing]: pendiente de MLB<br>Lineup PHI [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">LAD <span class="at">@</span> DET</div>
+                <div class="starters">Tyler Glasnow vs Framber Valdez</div>
+              </td>
+              <td class="pick"><strong>DET</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:53.5%"></div>
+                </div>
+                <div class="pct">DET 53.5% · LAD 46.5%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: DET | DET 53.5% — LAD 46.5% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Tyler Glasnow (LAD) vs Framber Valdez (DET)<br>  ERA temporada previa: Tyler Glasnow 2.90 | Framber Valdez 3.66<br>Factores a favor del pick / contexto: Más lesiones corto plazo en LAD (burden 6.4 vs 4.2)<br>Lineup DET [projected_or_missing]: pendiente de MLB<br>Lineup LAD [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">KC <span class="at">@</span> CLE</div>
+                <div class="starters">Seth Lugo vs Parker Messick</div>
+              </td>
+              <td class="pick"><strong>CLE</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:54.0%"></div>
+                </div>
+                <div class="pct">CLE 54.0% · KC 46.0%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: CLE | CLE 54.0% — KC 46.0% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Seth Lugo (KC) vs Parker Messick (CLE)<br>  ERA temporada previa: Seth Lugo 4.15 | Parker Messick 2.72<br>Parque: factor 0.915 (defensivo/pitcher)<br>Factores a favor del pick / contexto: Más lesiones corto plazo en KC (burden 4.2 vs 2.0)<br>Lineup CLE [projected_or_missing]: pendiente de MLB<br>Lineup KC [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">CIN <span class="at">@</span> CHC</div>
+                <div class="starters">Chase Burns vs Shota Imanaga</div>
+              </td>
+              <td class="pick"><strong>CIN</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:47.4%"></div>
+                </div>
+                <div class="pct">CHC 47.4% · CIN 52.6%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: CIN | CHC 47.4% — CIN 52.6% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Chase Burns (CIN) vs Shota Imanaga (CHC)<br>  ERA temporada previa: Chase Burns 4.40 | Shota Imanaga 3.93<br>Factores: partido muy equilibrado en win%, forma y abridores.<br>Lineup CHC [projected_or_missing]: pendiente de MLB<br>Lineup CIN [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">COL <span class="at">@</span> ATL</div>
+                <div class="starters">Mason Adams vs Tyler Mahle</div>
+              </td>
+              <td class="pick"><strong>ATL</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:52.3%"></div>
+                </div>
+                <div class="pct">ATL 52.3% · COL 47.7%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: ATL | ATL 52.3% — COL 47.7% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Mason Adams (COL) vs Tyler Mahle (ATL)<br>  ERA temporada previa: Mason Adams n/d | Tyler Mahle 2.18<br>Factores: partido muy equilibrado en win%, forma y abridores.<br>Lineup ATL [projected_or_missing]: pendiente de MLB<br>Lineup COL [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+            <tr class="game">
+              <td class="matchup">
+                <div class="teams">BAL <span class="at">@</span> ATH</div>
+                <div class="starters">Chris Bassitt vs nan</div>
+              </td>
+              <td class="pick"><strong>BAL</strong></td>
+              <td class="probs">
+                <div class="bar">
+                  <div class="home" style="width:46.1%"></div>
+                </div>
+                <div class="pct">ATH 46.1% · BAL 53.9%</div>
+              </td>
+              <td><span class="badge low">LOW</span></td>
+              <td class="exp">PREDICCIÓN: BAL | ATH 46.1% — BAL 53.9% | Confianza: LOW<br>⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.<br>Abridor: Chris Bassitt (BAL) vs nan (ATH)<br>  ERA temporada previa: Chris Bassitt 3.82 | nan n/d<br>Parque: factor 1.167 (ofensivo)<br>Factores a favor del pick / contexto: Más lesiones corto plazo en ATH (burden 3.3 vs 1.0)<br>Lineup ATH [projected_or_missing]: pendiente de MLB<br>Lineup BAL [projected_or_missing]: pendiente de MLB<br>📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.<br>Riesgos: edge estadístico pequeño; lineup no confirmado</td>
+            </tr>
+    </tbody>
+  </table>
+</main>
+<footer>
+  KAL · predicciones inmutables · actualizado 2026-08-30 01:56 · fase pre-postseason 2026
+</footer>
+</body>
+</html>

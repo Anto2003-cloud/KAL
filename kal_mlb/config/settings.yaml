@@ -1,0 +1,39 @@
+project:
+  name: "KAL MLB Predictor"
+  version: "0.1.0"
+  season: 2026
+
+paths:
+  raw: "data/raw"
+  processed: "data/processed"
+  predictions: "data/predictions"
+  results: "data/results"
+  models: "data/models"
+
+mlb:
+  sport_id: 1          # MLB
+  language: "en"
+
+features:
+  recent_windows:
+    - 7
+    - 15
+    - 30
+  min_pa_for_splits: 50
+  min_ip_for_pitcher: 10
+
+model:
+  primary: "lightgbm"
+  confidence:
+    high_threshold: 0.62
+    medium_threshold: 0.55
+    max_ensemble_disagreement: 0.04
+  retrain_every_n_games: 75
+
+tracking:
+  never_edit_predictions: true
+  simulate_units: true
+  odds_source: "closing"   # later: the-odds-api or similar
+
+logging:
+  level: "INFO"

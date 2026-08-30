@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>KAL · MLB AI Predictor</title>
+<style>
+:root{
+  --bg:#0b1220; --card:#121a2b; --line:#1e2a44; --text:#e8eefc; --muted:#8b9bb8;
+  --accent:#3b82f6; --accent2:#60a5fa; --high:#22c55e; --med:#eab308; --low:#94a3b8;
+  --bad:#f87171; --ok:#34d399;
+  --radius:14px; --font:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--font);background:radial-gradient(1100px 520px at 12% -8%,#1a2744 0%,var(--bg) 50%);color:var(--text);min-height:100vh}
+a{color:var(--accent2);text-decoration:none}
+header{position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);background:rgba(11,18,32,.85);border-bottom:1px solid var(--line);padding:.9rem 1.25rem;display:flex;flex-wrap:wrap;gap:.75rem 1.25rem;align-items:center;justify-content:space-between}
+.brand{display:flex;flex-direction:column;gap:.15rem}
+.brand b{font-size:1.2rem;letter-spacing:.04em}.brand b span{color:var(--accent)}
+.brand small{color:var(--muted);font-size:.8rem}
+.nav{display:flex;gap:.4rem;flex-wrap:wrap}
+.nav button{border:1px solid var(--line);background:#0e1626;color:var(--muted);border-radius:999px;padding:.4rem .85rem;font-weight:600;cursor:pointer;font-size:.85rem}
+.nav button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+main{max-width:1120px;margin:0 auto;padding:1.25rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem;margin-bottom:1.1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:1rem 1.05rem}
+.card .l{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
+.card .v{font-size:1.4rem;font-weight:700;margin-top:.2rem;font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0 1rem}
+.chip{border:1px solid var(--line);background:#0e1626;color:var(--muted);border-radius:999px;padding:.35rem .75rem;font-size:.82rem;cursor:pointer}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.game{border:1px solid var(--line);background:var(--card);border-radius:var(--radius);padding:1rem;margin-bottom:.75rem}
+.game-h{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.6rem;align-items:flex-start}
+.match{font-weight:700;font-size:1.05rem}
+.sp{color:var(--muted);font-size:.8rem;margin-top:.2rem}
+.pick{font-weight:700;color:#fff}
+.badge{display:inline-block;padding:.18rem .55rem;border-radius:999px;font-size:.72rem;font-weight:700;letter-spacing:.04em}
+.badge.HIGH{background:rgba(34,197,94,.15);color:var(--high)}
+.badge.MEDIUM{background:rgba(234,179,8,.15);color:var(--med)}
+.badge.LOW{background:rgba(148,163,184,.15);color:var(--low)}
+.bar{height:8px;background:#1a2438;border-radius:99px;overflow:hidden;max-width:220px;margin-top:.45rem}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.pct{color:var(--muted);font-size:.78rem;margin-top:.25rem}
+.exp{margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--line);color:#b6c3db;font-size:.84rem;line-height:1.5}
+.section{margin:1.4rem 0 .6rem;color:var(--muted);font-size:.75rem;text-transform:uppercase;letter-spacing:.06em}
+.note{color:var(--muted);font-size:.85rem;line-height:1.5;margin:.4rem 0 1rem}
+footer{text-align:center;color:var(--muted);font-size:.78rem;padding:2rem 1rem 2.5rem}
+.hidden{display:none}
+.mono{font-family:var(--mono);font-size:.9rem}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:.35rem .75rem;font-size:.9rem}
+.kv span:first-child{color:var(--muted)}
+@media(max-width:600px){.kv{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <b>KAL <span>MLB</span></b>
+    <small>Predictor de partidos · tracking · champion model</small>
+  </div>
+  <nav class="nav" id="nav">
+    <button type="button" data-v="preds" class="on">Predicciones</button>
+    <button type="button" data-v="panel">Tracking</button>
+    <button type="button" data-v="model">Modelo</button>
+  </nav>
+</header>
+<main>
+  <div id="view-preds">
+    <div class="grid" id="kpi"></div>
+    <div class="section">Fecha</div>
+    <div class="chips" id="dates"></div>
+    <div id="games"></div>
+  </div>
+  <div id="view-panel" class="hidden">
+    <div class="section">Panel de aciertos</div>
+    <p class="note">Las predicciones no se modifican después del resultado. El panel solo califica lo ya guardado.</p>
+    <div class="grid" id="panel-kpi"></div>
+    <div class="card" id="panel-detail"></div>
+  </div>
+  <div id="view-model" class="hidden">
+    <div class="section">Champion model</div>
+    <div class="card" id="model-card"></div>
+    <div class="section" style="margin-top:1.2rem">Intel</div>
+    <div class="card" id="intel-card"></div>
+  </div>
+</main>
+<footer>
+  KAL · estilo ViaClara (HTML autocontenido) · datos embebidos de sesión · no fuerza picks en partidos parejos
+</footer>
+<script>
+const DATA = {"generated_at": "2026-08-30T01:58:36", "preds": {"2026-08-30": [{"game_pk": 822688, "away": "MIA", "home": "WSH", "away_sp": "Janson Junk", "home_sp": "Andrew Alvarez", "winner": "WSH", "home_p": 0.5055766691356237, "away_p": 0.4944233308643763, "conf": "LOW", "exp": "PREDICCIÓN: WSH | WSH 50.6% — MIA 49.4% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Janson Junk (MIA) vs Andrew Alvarez (WSH) ·   ERA temporada previa: Janson Junk 4.17 | Andrew Alvarez 2.31 · Parque: factor 1.083 (ofensivo) · Factores: partido muy equilibrado en win%, forma y abridores. · Lineup WSH [projected_or_missing]: pendiente de MLB · Lineup MIA [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 822766, "away": "SEA", "home": "TOR", "away_sp": "Logan Gilbert", "home_sp": "Max Scherzer", "winner": "SEA", "home_p": 0.4574862875289743, "away_p": 0.5425137124710258, "conf": "LOW", "exp": "PREDICCIÓN: SEA | TOR 45.7% — SEA 54.3% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Logan Gilbert (SEA) vs Max Scherzer (TOR) ·   ERA temporada previa: Logan Gilbert 3.51 | Max Scherzer 4.98 · Factores a favor del pick / contexto: Más lesiones corto plazo en TOR (burden 5.2 vs 3.4) · Lineup TOR [projected_or_missing]: pendiente de MLB · Lineup SEA [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 822933, "away": "SD", "home": "TB", "away_sp": "Robbie Ray", "home_sp": "Drew Rasmussen", "winner": "SD", "home_p": 0.4988175984965421, "away_p": 0.5011824015034578, "conf": "LOW", "exp": "PREDICCIÓN: SD | TB 49.9% — SD 50.1% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Robbie Ray (SD) vs Drew Rasmussen (TB) ·   ERA temporada previa: Robbie Ray 3.65 | Drew Rasmussen 2.76 · Factores: partido muy equilibrado en win%, forma y abridores. · Lineup TB [projected_or_missing]: pendiente de MLB · Lineup SD [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 823010, "away": "PIT", "home": "STL", "away_sp": "Braxton Ashcraft", "home_sp": "Matthew Liberatore", "winner": "PIT", "home_p": 0.465030536826729, "away_p": 0.534969463173271, "conf": "LOW", "exp": "PREDICCIÓN: PIT | STL 46.5% — PIT 53.5% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Braxton Ashcraft (PIT) vs Matthew Liberatore (STL) ·   ERA temporada previa: Braxton Ashcraft 2.71 | Matthew Liberatore 4.21 · Factores a favor del pick / contexto: Más lesiones corto plazo en STL (burden 6.4 vs 2.2) · Lineup STL [projected_or_missing]: pendiente de MLB · Lineup PIT [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 823502, "away": "BOS", "home": "NYY", "away_sp": "Ranger Suarez", "home_sp": "Will Warren", "winner": "NYY", "home_p": 0.518152422106247, "away_p": 0.481847577893753, "conf": "LOW", "exp": "PREDICCIÓN: NYY | NYY 51.8% — BOS 48.2% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Ranger Suarez (BOS) vs Will Warren (NYY) ·   ERA temporada previa: Ranger Suarez 3.16 | Will Warren 4.63 · Factores: partido muy equilibrado en win%, forma y abridores. · Lineup NYY [projected_or_missing]: pendiente de MLB · Lineup BOS [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 823580, "away": "HOU", "home": "NYM", "away_sp": "Ethan Pecko", "home_sp": "Zac Thornton", "winner": "HOU", "home_p": 0.4861199064760835, "away_p": 0.5138800935239165, "conf": "LOW", "exp": "PREDICCIÓN: HOU | NYM 48.6% — HOU 51.4% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Ethan Pecko (HOU) vs Zac Thornton (NYM) · Factores a favor del pick / contexto: Más lesiones corto plazo en NYM (burden 3.0 vs 1.0) · Lineup NYM [projected_or_missing]: pendiente de MLB · Lineup HOU [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 823662, "away": "CWS", "home": "MIN", "away_sp": "Jordan Hicks", "home_sp": "Zebby Matthews", "winner": "MIN", "home_p": 0.5193628202117986, "away_p": 0.4806371797882014, "conf": "LOW", "exp": "PREDICCIÓN: MIN | MIN 51.9% — CWS 48.1% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Jordan Hicks (CWS) vs Zebby Matthews (MIN) ·   ERA temporada previa: Jordan Hicks 6.95 | Zebby Matthews 5.56 · Factores a favor del pick / contexto: Más lesiones corto plazo en CWS (burden 5.4 vs 2.0) · Lineup MIN [projected_or_missing]: pendiente de MLB · Lineup CWS [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 823740, "away": "TEX", "home": "MIL", "away_sp": "Kumar Rocker", "home_sp": "Dustin May", "winner": "MIL", "home_p": 0.5223816229270772, "away_p": 0.47761837707292276, "conf": "LOW", "exp": "PREDICCIÓN: MIL | MIL 52.2% — TEX 47.8% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Kumar Rocker (TEX) vs Dustin May (MIL) ·   ERA temporada previa: Kumar Rocker 5.74 | Dustin May 4.96 · Factores: partido muy equilibrado en win%, forma y abridores. · Lineup MIL [projected_or_missing]: pendiente de MLB · Lineup TEX [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 823987, "away": "PHI", "home": "LAA", "away_sp": "Zack Wheeler", "home_sp": "Yusei Kikuchi", "winner": "PHI", "home_p": 0.4576098753235939, "away_p": 0.5423901246764061, "conf": "LOW", "exp": "PREDICCIÓN: PHI | LAA 45.8% — PHI 54.2% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Zack Wheeler (PHI) vs Yusei Kikuchi (LAA) ·   ERA temporada previa: Zack Wheeler 2.71 | Yusei Kikuchi 3.99 · Factores a favor del pick / contexto: Más lesiones corto plazo en LAA (burden 4.0 vs 2.2) · Lineup LAA [projected_or_missing]: pendiente de MLB · Lineup PHI [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 824232, "away": "LAD", "home": "DET", "away_sp": "Tyler Glasnow", "home_sp": "Framber Valdez", "winner": "DET", "home_p": 0.5351912343228504, "away_p": 0.46480876567714957, "conf": "LOW", "exp": "PREDICCIÓN: DET | DET 53.5% — LAD 46.5% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Tyler Glasnow (LAD) vs Framber Valdez (DET) ·   ERA temporada previa: Tyler Glasnow 2.90 | Framber Valdez 3.66 · Factores a favor del pick / contexto: Más lesiones corto plazo en LAD (burden 6.4 vs 4.2) · Lineup DET [projected_or_missing]: pendiente de MLB · Lineup LAD [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 824393, "away": "KC", "home": "CLE", "away_sp": "Seth Lugo", "home_sp": "Parker Messick", "winner": "CLE", "home_p": 0.5396175984965421, "away_p": 0.4603824015034579, "conf": "LOW", "exp": "PREDICCIÓN: CLE | CLE 54.0% — KC 46.0% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Seth Lugo (KC) vs Parker Messick (CLE) ·   ERA temporada previa: Seth Lugo 4.15 | Parker Messick 2.72 · Parque: factor 0.915 (defensivo/pitcher) · Factores a favor del pick / contexto: Más lesiones corto plazo en KC (burden 4.2 vs 2.0) · Lineup CLE [projected_or_missing]: pendiente de MLB · Lineup KC [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 824636, "away": "CIN", "home": "CHC", "away_sp": "Chase Burns", "home_sp": "Shota Imanaga", "winner": "CIN", "home_p": 0.4744758266806863, "away_p": 0.5255241733193137, "conf": "LOW", "exp": "PREDICCIÓN: CIN | CHC 47.4% — CIN 52.6% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Chase Burns (CIN) vs Shota Imanaga (CHC) ·   ERA temporada previa: Chase Burns 4.40 | Shota Imanaga 3.93 · Factores: partido muy equilibrado en win%, forma y abridores. · Lineup CHC [projected_or_missing]: pendiente de MLB · Lineup CIN [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 824876, "away": "COL", "home": "ATL", "away_sp": "Mason Adams", "home_sp": "Tyler Mahle", "winner": "ATL", "home_p": 0.5227810107743923, "away_p": 0.4772189892256077, "conf": "LOW", "exp": "PREDICCIÓN: ATL | ATL 52.3% — COL 47.7% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Mason Adams (COL) vs Tyler Mahle (ATL) ·   ERA temporada previa: Mason Adams n/d | Tyler Mahle 2.18 · Factores: partido muy equilibrado en win%, forma y abridores. · Lineup ATL [projected_or_missing]: pendiente de MLB · Lineup COL [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}, {"game_pk": 824959, "away": "BAL", "home": "ATH", "away_sp": "Chris Bassitt", "home_sp": "nan", "winner": "BAL", "home_p": 0.46135233446496043, "away_p": 0.5386476655350396, "conf": "LOW", "exp": "PREDICCIÓN: BAL | ATH 46.1% — BAL 53.9% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Chris Bassitt (BAL) vs nan (ATH) ·   ERA temporada previa: Chris Bassitt 3.82 | nan n/d · Parque: factor 1.167 (ofensivo) · Factores a favor del pick / contexto: Más lesiones corto plazo en ATH (burden 3.3 vs 1.0) · Lineup ATH [projected_or_missing]: pendiente de MLB · Lineup BAL [projected_or_missing]: pendiente de MLB · 📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique. · Riesgos: edge estadístico pequeño; lineup no confirmado"}], "2026-08-29": [{"game_pk": 823501, "away": "BOS", "home": "NYY", "away_sp": "Alec Gamboa", "home_sp": "Max Fried", "winner": "NYY", "home_p": 0.5305196256743737, "away_p": 0.4694803743256263, "conf": "LOW", "exp": "PREDICCIÓN: NYY | NYY 53.1% — BOS 46.9% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Alec Gamboa (BOS) vs Max Fried (NYY) ·   ERA temporada previa: Alec Gamboa n/d | Max Fried 3.03 · Factores a favor del pick / contexto: Local con mejor win% temporada (NYY 0.556 vs BOS 0.507); Run differential favorece a NYY; Quality-start rate reciente: Max Fried 50% vs Alec Gamboa 100%; Bullpen proxy: visitante permitiendo de más (residual -0.95); OPS lineup: NYY 0.727 vs BOS 0.761 · Lineup NYY [confirmed]: 1. Trent Grisham → 2. Ben Rice → 3. Heliot Ramos → 4. Luis García Jr. → 5. Jazz Chisholm Jr. → 6. George Lombard Jr. → 7. Spencer Jones → 8. Austin Wells → 9. José Caballero · Lineup BOS [confirmed]: 1. Jahmai Jones → 2. Ceddanne Rafaela → 3. Wilyer Abreu → 4. Willson Contreras → 5. Caleb Durbin → 6. Andruw Monasterio → 7. Nick Sogard → 8. Connor Wong → 9. Eli White · Riesgos: edge estadístico pequeño; posible fatiga por poco descanso"}, {"game_pk": 823741, "away": "TEX", "home": "MIL", "away_sp": "Cal Quantrill", "home_sp": "Shane Drohan", "winner": "MIL", "home_p": 0.5455991000803736, "away_p": 0.4544008999196264, "conf": "LOW", "exp": "PREDICCIÓN: MIL | MIL 54.6% — TEX 45.4% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Cal Quantrill (TEX) vs Shane Drohan (MIL) ·   ERA temporada previa: Cal Quantrill 6.04 | Shane Drohan n/d · Factores a favor del pick / contexto: Local con mejor win% temporada (MIL 0.585 vs TEX 0.503); Forma L10 favorece a MIL (diff +2 W); Run differential favorece a MIL; Bullpen proxy: visitante permitiendo de más (residual -1.95); OPS lineup: MIL 0.752 vs TEX 0.725 · Lineup MIL [confirmed]: 1. Brice Turang → 2. Jackson Chourio → 3. Jake Bauers → 4. William Contreras → 5. Garrett Mitchell → 6. Christian Yelich → 7. Luis Lara → 8. Cooper Pratt → 9. David Hamilton · Lineup TEX [confirmed]: 1. Justin Foscue → 2. Corey Seager → 3. Wyatt Langford → 4. Brandon Nimmo → 5. Ezequiel Duran → 6. Jake Burger → 7. Danny Jansen → 8. Logan O'Hoppe → 9. Cody Freeman · Riesgos: edge estadístico pequeño; posible fatiga por poco descanso"}, {"game_pk": 823176, "away": "AZ", "home": "SF", "away_sp": "Mitch Bratt", "home_sp": "Yunior Marte", "winner": "AZ", "home_p": 0.42590247970573786, "away_p": 0.5740975202942622, "conf": "MEDIUM", "exp": "PREDICCIÓN: AZ | SF 42.6% — AZ 57.4% | Confianza: MEDIUM · Abridor: Mitch Bratt (AZ) vs Yunior Marte (SF) · Parque: factor 0.923 (defensivo/pitcher) · Factores a favor del pick / contexto: Visitante con mejor win% temporada (SF 0.483 vs AZ 0.528); Forma L10 favorece a AZ (diff -4 W); Run differential favorece a AZ; Quality-start rate reciente: Yunior Marte 17% vs Mitch Bratt 44%; Más lesiones corto plazo en SF (burden 7.6 vs 5.1); OPS lineup: SF 0.653 vs AZ 0.722 · Lineup SF [confirmed]: 1. Jonah Cox → 2. Rafael Devers → 3. Bryce Eldridge → 4. Jung Hoo Lee → 5. Shay Whitcomb → 6. Andrew Knizner → 7. Grant McCray → 8. Osleivis Basabe → 9. Christian Koss · Lineup AZ [confirmed]: 1. Lars Nootbaar → 2. Corbin Carroll → 3. Geraldo Perdomo → 4. Nolan Arenado → 5. Max Kepler → 6. Tim Tawa → 7. James McCann → 8. Ildemaro Vargas → 9. Ryan Waldschmidt · Riesgos: posible fatiga por poco descanso"}, {"game_pk": 823986, "away": "PHI", "home": "LAA", "away_sp": "Cristopher Sánchez", "home_sp": "Ryan Johnson", "winner": "PHI", "home_p": 0.45177399076576996, "away_p": 0.54822600923423, "conf": "LOW", "exp": "PREDICCIÓN: PHI | LAA 45.2% — PHI 54.8% | Confianza: LOW · ⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. · Abridor: Cristopher Sánchez (PHI) vs Ryan Johnson (LAA) ·   ERA temporada previa: Cristopher Sánchez 2.48 | Ryan Johnson 7.36 · Factores a favor del pick / contexto: Visitante con mejor win% temporada (LAA 0.421 vs PHI 0.568); Forma L10 favorece a PHI (diff -5 W); Run differential favorece a PHI; Más lesiones corto plazo en LAA (burden 4.0 vs 2.2); OPS lineup: LAA 0.664 vs PHI 0.748; Ventaja ofensiva de lineup → PHI · Lineup LAA [confirmed]: 1. Zach Neto → 2. Mike Trout → 3. Vaughn Grissom → 4. Jose Siri → 5. Christian Moore → 6. Oswald Peraza → 7. Denzer Guzman → 8. Travis d'Arnaud → 9. Wade Meckler · Lineup PHI [confirmed]: 1. Kyle Schwarber → 2. Trea Turner → 3. Bryce Harper → 4. Luis Arraez → 5. Alec Bohm → 6. Bryson Stott → 7. Brandon Marsh → 8. J.T. Realmuto → 9. Justin Crawford · Riesgos: edge estadístico pequeño; posible fatiga por poco descanso"}, {"game_pk": 824961, "away": "BAL", "home": "ATH", "away_sp": "Shane Baz", "home_sp": "Jack Perkins", "winner": "BAL", "home_p": 0.43346575142544813, "away_p": 0.5665342485745519, "conf": "MEDIUM", "exp": "PREDICCIÓN: BAL | ATH 43.3% — BAL 56.7% | Confianza: MEDIUM · Abridor: Shane Baz (BAL) vs Jack Perkins (ATH) ·   ERA temporada previa: Shane Baz 4.87 | Jack Perkins 4.19 · Parque: factor 1.167 (ofensivo) · Factores a favor del pick / contexto: Visitante con mejor win% temporada (ATH 0.406 vs BAL 0.541); Run differential favorece a BAL; Quality-start rate reciente: Jack Perkins 10% vs Shane Baz 50%; Más lesiones corto plazo en ATH (burden 3.3 vs 1.0); Bullpen proxy: local permitiendo de más (residual +0.50); OPS lineup: ATH 0.706 vs BAL 0.732 · Lineup ATH [confirmed]: 1. Henry Bolte → 2. Jeff McNeil → 3. Zack Gelof → 4. Lawrence Butler → 5. Tommy White → 6. Donovan Walton → 7. Max Muncy → 8. Carlos Cortes → 9. Jonah Heim · Lineup BAL [confirmed]: 1. Jackson Holliday → 2. Pete Alonso → 3. Gunnar Henderson → 4. Christian Encarnacion-Strand → 5. Samuel Basallo → 6. Dylan Beavers → 7. Coby Mayo → 8. Colton Cowser → 9. Leody Taveras · Riesgos: posible fatiga por poco descanso"}]}, "panel": {"updated_at": "2026-08-30T01:46:37.854765", "n_graded": 5, "n_pending": 14, "hits": 5, "misses": 0, "accuracy": 1.0, "record": "5-0", "units_flat": 5.0, "by_confidence": {"LOW": {"n": 3, "hits": 3, "acc": 1.0}, "MEDIUM": {"n": 2, "hits": 2, "acc": 1.0}}, "best_streak": 5, "worst_streak": 0, "last_10": "5-0"}, "champion": {"version": "lgbm_2023-2025_test2026", "accuracy": 0.5518234165067178, "log_loss": 0.6850745479866598, "n_test": 2084, "promoted_at": "bootstrap"}, "intel": {"refreshed_at": "2026-08-30T01:34:22.005112", "rosters": 1366, "transactions": 1986, "standings": 30, "schedule": 73, "headlines": 0, "roster_snapshots": 1}};
+
+function pct(x){ return (Number(x||0)*100).toFixed(1)+'%'; }
+function fmtAcc(x){ return x==null?'—':(Number(x)*100).toFixed(1)+'%'; }
+
+function renderKPI(){
+  const p=DATA.panel||{};
+  const c=DATA.champion||{};
+  document.getElementById('kpi').innerHTML=`
+    <div class="card"><div class="l">Récord</div><div class="v">${p.record||'—'}</div></div>
+    <div class="card"><div class="l">Acierto</div><div class="v">${fmtAcc(p.accuracy)}</div></div>
+    <div class="card"><div class="l">Calificados</div><div class="v">${p.n_graded??0}</div></div>
+    <div class="card"><div class="l">Pendientes</div><div class="v">${p.n_pending??0}</div></div>
+    <div class="card"><div class="l">Unidades</div><div class="v">${p.units_flat??'—'}</div></div>
+    <div class="card"><div class="l">Champion WF</div><div class="v">${fmtAcc(c.accuracy)}</div></div>`;
+}
+
+let activeDate = Object.keys(DATA.preds||{}).sort().reverse()[0] || null;
+
+function renderDates(){
+  const dates=Object.keys(DATA.preds||{}).sort().reverse();
+  const el=document.getElementById('dates');
+  if(!dates.length){ el.innerHTML='<span class="note">Sin predicciones exportadas.</span>'; return; }
+  el.innerHTML=dates.map(d=>`<button type="button" class="chip ${d===activeDate?'on':''}" data-d="${d}">${d}</button>`).join('');
+  el.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{activeDate=b.dataset.d;renderDates();renderGames();});
+}
+
+function renderGames(){
+  const list=(DATA.preds&&DATA.preds[activeDate])||[];
+  const root=document.getElementById('games');
+  if(!list.length){ root.innerHTML='<div class="card note">No hay partidos para esta fecha.</div>'; return; }
+  root.innerHTML=list.map(g=>{
+    const hp=(g.home_p*100);
+    return `<article class="game">
+      <div class="game-h">
+        <div>
+          <div class="match">${g.away} <span style="color:var(--muted);font-weight:500">@</span> ${g.home}</div>
+          <div class="sp">${g.away_sp} vs ${g.home_sp}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="pick">→ ${g.winner}</div>
+          <span class="badge ${g.conf}">${g.conf}</span>
+        </div>
+      </div>
+      <div class="bar"><i style="width:${hp.toFixed(1)}%"></i></div>
+      <div class="pct">${g.home} ${hp.toFixed(1)}% · ${g.away} ${(100-hp).toFixed(1)}%</div>
+      <div class="exp">${g.exp||'Sin explicación'}</div>
+    </article>`;
+  }).join('');
+}
+
+function renderPanel(){
+  const p=DATA.panel||{};
+  document.getElementById('panel-kpi').innerHTML=`
+    <div class="card"><div class="l">Récord</div><div class="v">${p.record||'—'}</div></div>
+    <div class="card"><div class="l">Acierto</div><div class="v">${fmtAcc(p.accuracy)}</div></div>
+    <div class="card"><div class="l">Últimos 10</div><div class="v">${p.last_10||'—'}</div></div>
+    <div class="card"><div class="l">Mejor racha</div><div class="v">${p.best_streak??'—'}</div></div>`;
+  const by=p.by_confidence||{};
+  const rows=Object.keys(by).map(k=>{
+    const v=by[k];
+    return `<div class="kv"><span>${k}</span><span>${v.hits}/${v.n} (${fmtAcc(v.acc)})</span></div>`;
+  }).join('')||'<div class="note">Sin desglose aún.</div>';
+  document.getElementById('panel-detail').innerHTML=`
+    <div class="l" style="margin-bottom:.6rem">Por confianza</div>
+    ${rows}
+    <div class="note" style="margin-top:1rem">Actualizado: ${p.updated_at||'—'} · generado HTML: ${DATA.generated_at||'—'}</div>`;
+}
+
+function renderModel(){
+  const c=DATA.champion||{};
+  const i=DATA.intel||{};
+  document.getElementById('model-card').innerHTML=`
+    <div class="kv">
+      <span>Versión</span><span class="mono">${c.version||'—'}</span>
+      <span>Accuracy WF</span><span>${fmtAcc(c.accuracy)}</span>
+      <span>Log-loss</span><span class="mono">${c.log_loss!=null?Number(c.log_loss).toFixed(4):'—'}</span>
+      <span>N test</span><span>${c.n_test??'—'}</span>
+      <span>Promovido</span><span>${c.promoted_at||'—'}</span>
+    </div>
+    <p class="note" style="margin-top:1rem">Retrain automático solo si hay ≥75 partidos calificados y el challenger mejora al champion.</p>`;
+  document.getElementById('intel-card').innerHTML=`
+    <div class="kv">
+      <span>Refresh</span><span>${i.refreshed_at||'—'}</span>
+      <span>Rosters</span><span>${i.rosters??'—'}</span>
+      <span>Transacciones</span><span>${i.transactions??'—'}</span>
+      <span>Schedule</span><span>${i.schedule??'—'}</span>
+    </div>`;
+}
+
+document.getElementById('nav').querySelectorAll('button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    const v=b.dataset.v;
+    document.getElementById('view-preds').classList.toggle('hidden', v!=='preds');
+    document.getElementById('view-panel').classList.toggle('hidden', v!=='panel');
+    document.getElementById('view-model').classList.toggle('hidden', v!=='model');
+  };
+});
+
+renderKPI(); renderDates(); renderGames(); renderPanel(); renderModel();
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "name": "KAL MLB AI Predictor",
+  "description": "Sistema de predicción de partidos de MLB con análisis multicapa, tracking inmutable, panel de rendimiento y modelo campeón LightGBM.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

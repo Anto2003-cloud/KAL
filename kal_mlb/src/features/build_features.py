@@ -34,6 +34,54 @@ PROCESSED = PROJECT_ROOT / "data" / "processed"
 PROCESSED.mkdir(parents=True, exist_ok=True)
 
 PITCHER_HAND_CACHE = RAW / "pitcher_hands.json"
+STATCAST_ROLLING_CACHE = PROCESSED / "team_statcast_rolling.feather"
+
+
+def attach_statcast_features(games: pd.DataFrame) -> pd.DataFrame:
+    """
+    Agrega xwOBA/hard-hit%/barrel% (rolling, ya shifteados sin fuga) por
+    equipo local y visitante, usando el archivo generado por
+    src/data/fetch_statcast.py::save_team_rolling_statcast().
+
+    Degrada limpio (no-op) si ese archivo no existe todavía — igual que
+    attach_pitcher_hand con su cache.
+    """
+    if not STATCAST_ROLLING_CACHE.exists():
+        logger.warning(
+            "%s no existe todavía — correr scripts/fetch_statcast_data.py para "
+            "habilitar las features de Statcast (xwOBA/hard-hit%%/barrel%%). Se omite por ahora.",
+            STATCAST_ROLLING_CACHE,
+        )
+        return games
+
+    roll = pd.read_feather(STATCAST_ROLLING_CACHE)
+    if roll.empty:
+        return games
+
+    roll["game_date"] = pd.to_datetime(roll["game_date"]).dt.date
+    games = games.copy()
+    games["_game_date_dt"] = pd.to_datetime(games["game_date"]).dt.date
+
+    metric_cols = [c for c in roll.columns if c not in ("game_date", "batting_team")]
+
+    home_roll = roll.rename(columns={"batting_team": "home_team_abbr", **{c: f"home_{c}" for c in metric_cols}})
+    away_roll = roll.rename(columns={"batting_team": "away_team_abbr", **{c: f"away_{c}" for c in metric_cols}})
+
+    games = games.merge(
+        home_roll, left_on=["_game_date_dt", "home_team_abbr"], right_on=["game_date", "home_team_abbr"], how="left", suffixes=("", "_hroll")
+    )
+    games = games.merge(
+        away_roll, left_on=["_game_date_dt", "away_team_abbr"], right_on=["game_date", "away_team_abbr"], how="left", suffixes=("", "_aroll")
+    )
+    games = games.drop(columns=["_game_date_dt", "game_date_hroll", "game_date_aroll"], errors="ignore")
+
+    for c in metric_cols:
+        if f"home_{c}" in games.columns and f"away_{c}" in games.columns:
+            games[f"{c}_diff"] = games[f"home_{c}"] - games[f"away_{c}"]
+
+    coverage = games[f"home_{metric_cols[0]}"].notna().mean() if metric_cols and f"home_{metric_cols[0]}" in games.columns else 0.0
+    logger.info("Features de Statcast: %.1f%% de partidos con datos de equipo local", coverage * 100)
+    return games
 
 
 def attach_pitcher_hand(games: pd.DataFrame) -> pd.DataFrame:
@@ -552,6 +600,9 @@ def build_game_features(
     # lo que se comía sp_hand_same/sp_throws_L si se llamaba antes.
     games = attach_pitcher_hand(games)
 
+    # Statcast (xwOBA/hard-hit%/barrel%) — no-op si el cache no existe todavía
+    games = attach_statcast_features(games)
+
     # Context features
     games["is_day"] = (games["day_night"] == "day").astype(int)
     games["rest_diff"] = games["home_rest"] - games["away_rest"]
@@ -625,6 +676,16 @@ def build_game_features(
         "home_sp_throws_L",
         "away_sp_throws_L",
         "sp_hand_same",
+        # Statcast rolling (requiere cache poblado, ver attach_statcast_features)
+        "home_hard_hit_pct_l20",
+        "away_hard_hit_pct_l20",
+        "hard_hit_pct_l20_diff",
+        "home_xwoba_l20",
+        "away_xwoba_l20",
+        "xwoba_l20_diff",
+        "home_barrel_pct_l20",
+        "away_barrel_pct_l20",
+        "barrel_pct_l20_diff",
         # Prior season pitcher quality
         "sp_era_prev_home",
         "sp_era_prev_away",

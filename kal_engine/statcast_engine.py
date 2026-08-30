@@ -15,9 +15,13 @@ datos de muestra hardcodeados (src/data/ninePillarsData.ts), no la salida
 de este archivo ni del modelo LightGBM real entrenado en kal_mlb/.
 
 Antes de "conectar" esto a algo real, hace falta reemplazarlo por un
-fetcher genuino (p.ej. pybaseball contra Baseball Savant) que traiga
-xwOBA/barrel%/hard-hit% reales por equipo y por rango de fechas — eso es
-trabajo nuevo, no cablear este archivo.
+fetcher genuino que traiga xwOBA/barrel%/hard-hit% reales por equipo y
+por rango de fechas — eso ya existe: ver kal_mlb/src/data/fetch_statcast.py
+(usa pybaseball contra Baseball Savant) + kal_mlb/scripts/fetch_statcast_data.py
+para poblar el cache. Ese fetcher se escribió en un entorno sin salida de
+red a Baseball Savant, así que su lógica de agregación se probó con datos
+sintéticos pero NO contra la API real — hay que correrlo y verificarlo en
+un entorno con red antes de confiar en los números.
 
 Pitcher + Bateadores + Bullpen + Lesiones + Lineup + Statcast + Matchup + Parque + Clima
 -> KAL Model -> Winner + Win Probability + Multi-Factor Explainability -> Outcome -> Learning

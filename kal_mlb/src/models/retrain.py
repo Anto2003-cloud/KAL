@@ -159,7 +159,7 @@ def maybe_retrain(
         logger.warning("Feature rebuild failed (continuing with existing matrix): %s", e)
 
     # Train new candidate (same recipe as train.py)
-    candidate = walk_forward_train([2023, 2024, 2025], [2026], calibrate=False)
+    candidate = walk_forward_train([2023, 2024, 2025], [2026], calibrate=True)
     cand_path = candidate["model_path"]
     cand_art = joblib.load(cand_path)
 
@@ -197,10 +197,12 @@ def maybe_retrain(
         else:
             better_ll = cand_metrics["log_loss"] < champ_metrics["log_loss"] - 1e-4
             better_acc = cand_metrics["accuracy"] > champ_metrics["accuracy"] + 0.005
+            better_brier = cand_metrics["brier"] < champ_metrics["brier"] - 1e-4
             not_worse_ll = cand_metrics["log_loss"] <= champ_metrics["log_loss"] + 1e-3
-            if better_ll or (better_acc and not_worse_ll):
+            not_worse_brier = cand_metrics["brier"] <= champ_metrics["brier"] + 1e-3
+            if better_ll or better_brier or (better_acc and not_worse_ll and not_worse_brier):
                 promote = True
-                reason = "Candidato supera al champion en partidos calificados."
+                reason = "Candidato supera al champion en partidos calificados (log-loss/Brier/accuracy)."
             else:
                 reason = "Candidato NO supera al champion; se mantiene el modelo actual."
 

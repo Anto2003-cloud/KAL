@@ -166,9 +166,26 @@ def walk_forward_train(
     logger.info("Fitting LightGBM ...")
     model = train_lgbm(X_tr, y_tr, X_va, y_va)
 
-    # Skip complex calibration for v0.1 – raw probabilities are already decent
-    final_model = model
-    proba = model.predict_proba(X_test)[:, 1]
+    if calibrate:
+        logger.info("Calibrating probabilities (isotonic) on validation split ...")
+        try:
+            # sklearn >= 1.6: cv="prefit" was removed in favor of FrozenEstimator
+            from sklearn.frozen import FrozenEstimator
+
+            # sigmoid (Platt) instead of isotonic: with ~1-1.5k validation rows,
+            # isotonic's step function overfits and pushes almost every predicted
+            # probability just above the 0.5 pick threshold. Sigmoid is a smoother,
+            # lower-variance fit and matches the true home-win rate without that artifact.
+            calibrated = CalibratedClassifierCV(FrozenEstimator(model), method="sigmoid")
+        except ImportError:
+            # sklearn < 1.6
+            calibrated = CalibratedClassifierCV(model, method="sigmoid", cv="prefit")
+        calibrated.fit(X_va, y_va)
+        final_model = calibrated
+    else:
+        final_model = model
+
+    proba = final_model.predict_proba(X_test)[:, 1]
 
     metrics = evaluate(y_test.values, proba)
     logger.info("=== TEST RESULTS ===")

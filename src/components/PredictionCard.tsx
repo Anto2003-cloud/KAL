@@ -4,6 +4,7 @@ import { TEAMS_META } from '../data/mlbData';
 import { TeamLogo } from './TeamLogo';
 import { generatePitcherVsTeamStats } from '../utils/pitcherVsOpponentHelper';
 import { ChevronRight } from 'lucide-react';
+import { formatFairLine, fairAmerican } from '../utils/fairOdds';
 
 interface PredictionCardProps {
   prediction: GamePrediction;
@@ -18,6 +19,14 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
   const isHomeWinner = p.winner === p.home;
   const winnerProb = isHomeWinner ? p.home_p : p.away_p;
   const isHighConfidence = p.conf === 'HIGH' || winnerProb >= 0.65;
+  const fairLine = formatFairLine(winnerProb);
+  const fairAm = fairAmerican(winnerProb);
+  const edgeNote =
+    winnerProb < 0.55
+      ? 'Edge bajo · coin flip'
+      : winnerProb < 0.60
+        ? 'Edge moderado'
+        : 'Edge fuerte';
 
   // Pitcher vs Opponent Team Analysis
   const awayPitcherVsHome = generatePitcherVsTeamStats(p.away_sp, p.home, false);
@@ -127,22 +136,28 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
         </div>
       </div>
 
-      {/* Footer with H2H note */}
-      <div className="mt-4 pt-3 border-t border-white/[0.04] flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2">
-          {isHighConfidence ? (
-            <span className="text-[11px] text-emerald-400 font-medium">Alta probabilidad</span>
-          ) : (
-            <span className="text-[11px] text-neutral-400">
-              H2H: {isHomeWinner ? `${p.home_sp} vs ${p.away}` : `${p.away_sp} vs ${p.home}`}
-            </span>
-          )}
+      {/* Footer: fair odds + confidence */}
+      <div className="mt-4 pt-3 border-t border-white/[0.04] space-y-2">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-[11px] text-neutral-500">Cuota justa (modelo)</span>
+          <span className="font-mono text-[11px] text-neutral-200">{fairLine}</span>
         </div>
-
-        <span className="text-xs font-medium text-neutral-400 group-hover:text-white flex items-center gap-1 transition-colors">
-          Detalles
-          <ChevronRight className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
-        </span>
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            {isHighConfidence ? (
+              <span className="text-[11px] text-emerald-400 font-medium">Alta probabilidad</span>
+            ) : (
+              <span className={`text-[11px] font-medium ${winnerProb < 0.55 ? 'text-rose-400/90' : 'text-amber-400/90'}`}>
+                {edgeNote}
+              </span>
+            )}
+            <span className="text-[10px] text-neutral-600">{p.conf}</span>
+          </div>
+          <span className="text-xs font-medium text-neutral-400 group-hover:text-white flex items-center gap-1 transition-colors">
+            Detalles
+            <ChevronRight className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+          </span>
+        </div>
       </div>
     </div>
   );

@@ -7,6 +7,8 @@ import { GameDetailModal } from './components/GameDetailModal';
 import { DeepNinePillarsView } from './components/DeepNinePillarsView';
 import { BankrollAndAuditHub } from './components/BankrollAndAuditHub';
 import { LabAndValidationHub } from './components/LabAndValidationHub';
+import { ParlayLab } from './components/ParlayLab';
+import type { KalParlaySlip } from './utils/parlayEngine';
 import {
   RAW_PREDICTIONS,
   TRACKING_PANEL,
@@ -19,12 +21,31 @@ import { Search } from 'lucide-react';
 
 export default function App() {
   const [activeDate, setActiveDate] = useState<string>('2026-08-30');
-  const [activeTab, setActiveTab] = useState<'preds' | 'pillars' | 'history' | 'lab'>('preds');
+  const [activeTab, setActiveTab] = useState<'preds' | 'pillars' | 'history' | 'lab' | 'parlay'>('preds');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedConfidence, setSelectedConfidence] = useState<string>('ALL');
   const [selectedPrediction, setSelectedPrediction] = useState<GamePrediction | null>(null);
   const [isRunningPipeline, setIsRunningPipeline] = useState<boolean>(false);
   const [pipelineToast, setPipelineToast] = useState<string | null>(null);
+  const [parlayHistory, setParlayHistory] = useState<KalParlaySlip[]>(() => {
+    try {
+      const raw = localStorage.getItem('kal_parlay_history');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const lockParlaySlip = (slip: KalParlaySlip) => {
+    setParlayHistory((prev) => {
+      const next = [...prev.filter((s) => s.id !== slip.id), slip];
+      try {
+        localStorage.setItem('kal_parlay_history', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    setPipelineToast('Parlay de 4 bloqueado (inmutable)');
+    setTimeout(() => setPipelineToast(null), 3000);
+  };
 
   const availableDates = Object.keys(RAW_PREDICTIONS).sort().reverse();
   const currentPredictions = RAW_PREDICTIONS[activeDate] || [];
@@ -170,6 +191,16 @@ export default function App() {
 
         {/* HISTORIAL TAB */}
         {activeTab === 'history' && <BankrollAndAuditHub panel={TRACKING_PANEL} />}
+
+        {/* PARLAY TAB */}
+        {activeTab === 'parlay' && (
+          <ParlayLab
+            games={currentPredictions}
+            date={activeDate}
+            history={parlayHistory}
+            onLockSlip={lockParlaySlip}
+          />
+        )}
 
         {/* LAB TAB */}
         {activeTab === 'lab' && <LabAndValidationHub champion={CHAMPION_MODEL} />}

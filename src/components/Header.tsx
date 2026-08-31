@@ -5,8 +5,8 @@ interface HeaderProps {
   activeDate: string;
   availableDates: string[];
   onDateChange: (date: string) => void;
-  activeTab: 'preds' | 'pillars' | 'history' | 'lab';
-  onTabChange: (tab: 'preds' | 'pillars' | 'history' | 'lab') => void;
+  activeTab: 'preds' | 'pillars' | 'history' | 'lab' | 'parlay';
+  onTabChange: (tab: 'preds' | 'pillars' | 'history' | 'lab' | 'parlay') => void;
   searchTerm: string;
   onSearchChange: (term: string) => void;
   intel: IntelData;
@@ -46,6 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
           <nav className="hidden md:flex items-center bg-white/[0.04] p-1 rounded-full border border-white/[0.06]">
             {[
               { id: 'preds', label: 'Pronósticos' },
+              { id: 'parlay', label: 'Parlay 4' },
               { id: 'pillars', label: 'Modelo (9 Factores)' },
               { id: 'history', label: 'Historial' },
               { id: 'lab', label: 'Laboratorio' },

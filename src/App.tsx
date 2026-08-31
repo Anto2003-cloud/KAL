@@ -9,6 +9,7 @@ import { BankrollAndAuditHub } from './components/BankrollAndAuditHub';
 import { LabAndValidationHub } from './components/LabAndValidationHub';
 import { ParlayLab } from './components/ParlayLab';
 import type { KalParlaySlip } from './utils/parlayEngine';
+import { fetchLivePreds, fetchLivePanel, fetchLiveStatus, isLiveConfigured } from './data/liveApi';
 import {
   RAW_PREDICTIONS,
   TRACKING_PANEL,
@@ -27,7 +28,44 @@ export default function App() {
   const [selectedPrediction, setSelectedPrediction] = useState<GamePrediction | null>(null);
   const [isRunningPipeline, setIsRunningPipeline] = useState<boolean>(false);
   const [pipelineToast, setPipelineToast] = useState<string | null>(null);
-  const [parlayHistory, setParlayHistory] = useState<KalParlaySlip[]>(() => {
+  const [liveMode, setLiveMode] = useState(false);
+  const [liveNote, setLiveNote] = useState<string>('Comprobando API…');
+  const [livePreds, setLivePreds] = useState<GamePrediction[] | null>(null);
+  const [livePanel, setLivePanel] = useState<typeof TRACKING_PANEL | null>(null);
+
+  // Cargar cerebro vivo si VITE_KAL_API_URL está definida
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!isLiveConfigured()) {
+        setLiveMode(false);
+        setLiveNote('Sin VITE_KAL_API_URL — datos embebidos (no autónomo aún)');
+        return;
+      }
+      const st = await fetchLiveStatus();
+      if (cancelled) return;
+      if (!st.ok) {
+        setLiveMode(false);
+        setLiveNote(`API no reachable: ${st.error || 'error'} — fallback embebido`);
+        return;
+      }
+      setLiveMode(true);
+      setLiveNote('Conectado al cerebro vivo (API)');
+      const [preds, panel] = await Promise.all([
+        fetchLivePreds(activeDate),
+        fetchLivePanel(),
+      ]);
+      if (cancelled) return;
+      if (preds && preds.length) {
+        // map loose API rows → GamePrediction shape best-effort
+        setLivePreds(preds as GamePrediction[]);
+      }
+      if (panel) setLivePanel(panel as any);
+    })();
+    return () => { cancelled = true; };
+  }, [activeDate]);
+
+    const [parlayHistory, setParlayHistory] = useState<KalParlaySlip[]>(() => {
     try {
       const raw = localStorage.getItem('kal_parlay_history');
       return raw ? JSON.parse(raw) : [];
@@ -48,7 +86,8 @@ export default function App() {
   };
 
   const availableDates = Object.keys(RAW_PREDICTIONS).sort().reverse();
-  const currentPredictions = RAW_PREDICTIONS[activeDate] || [];
+  const currentPredictions = (livePreds && livePreds.length ? livePreds : (RAW_PREDICTIONS[activeDate] || [])) as GamePrediction[];
+  const panelData = livePanel || TRACKING_PANEL;
 
   // Filtered predictions
   const filteredPredictions = useMemo(() => {
@@ -87,11 +126,31 @@ export default function App() {
 
   const handleRunPipeline = () => {
     setIsRunningPipeline(true);
-    setTimeout(() => {
-      setIsRunningPipeline(false);
-      setPipelineToast('Datos y pronósticos actualizados');
-      setTimeout(() => setPipelineToast(null), 3000);
-    }, 800);
+    (async () => {
+      try {
+        if (isLiveConfigured()) {
+          const [preds, panel, st] = await Promise.all([
+            fetchLivePreds(activeDate),
+            fetchLivePanel(),
+            fetchLiveStatus(),
+          ]);
+          if (preds && preds.length) setLivePreds(preds as GamePrediction[]);
+          if (panel) setLivePanel(panel as any);
+          if (st.ok) {
+            setLiveMode(true);
+            setLiveNote('Conectado al cerebro vivo (API) — refresco manual');
+          }
+          setPipelineToast(preds?.length ? `Vivo: ${preds.length} partidos` : 'API ok pero sin preds aún (espera ciclo)');
+        } else {
+          setPipelineToast('Sin API viva: solo datos embebidos. Configura VITE_KAL_API_URL');
+        }
+      } catch (e: any) {
+        setPipelineToast('Error al refrescar: ' + (e?.message || e));
+      } finally {
+        setIsRunningPipeline(false);
+        setTimeout(() => setPipelineToast(null), 4000);
+      }
+    })();
   };
 
   return (
@@ -123,7 +182,7 @@ export default function App() {
         )}
 
         {/* Global Key Metrics */}
-        <MetricsCards panel={TRACKING_PANEL} champion={CHAMPION_MODEL} />
+        <MetricsCards panel={panelData} champion={CHAMPION_MODEL} />
 
         {/* Quick info bar */}
         <QuickStartGuide />
@@ -131,9 +190,12 @@ export default function App() {
         {/* PRONÓSTICOS TAB */}
         {activeTab === 'preds' && (
           <div className="space-y-4">
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 text-[11px] text-amber-200/90">
-              <strong className="text-amber-100">Modo datos embebidos.</strong> Las predicciones de esta web aún no se actualizan solas cada día (no hay backend en vivo).
-              El 5-0 es una muestra de prueba graded, no “todo lo que debiste apostar”. Pronósticos = análisis del día cargado; Parlay 4 = experimento medible.
+            <div className={`rounded-xl border px-4 py-2.5 text-[11px] ${liveMode ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-200/90' : 'border-amber-500/20 bg-amber-500/5 text-amber-200/90'}`}>
+              <strong className={liveMode ? 'text-emerald-100' : 'text-amber-100'}>
+                {liveMode ? 'Modo vivo (API)' : 'Modo datos embebidos'}
+              </strong>
+              {' '}{liveNote}
+              {!liveMode && ' — Despliega el API en Railway y define VITE_KAL_API_URL para autonomía total.'}
             </div>
             {/* Filter controls */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
@@ -204,7 +266,7 @@ export default function App() {
         {activeTab === 'pillars' && <DeepNinePillarsView />}
 
         {/* HISTORIAL TAB */}
-        {activeTab === 'history' && <BankrollAndAuditHub panel={TRACKING_PANEL} />}
+        {activeTab === 'history' && <BankrollAndAuditHub panel={panelData} />}
 
         {/* PARLAY TAB */}
         {activeTab === 'parlay' && (

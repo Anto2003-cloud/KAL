@@ -50,6 +50,9 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({ panel, champion }) =
           <span className="text-xs text-neutral-400 mt-0.5 block">2,084 partidos</span>
         </div>
       </div>
+      <p className="col-span-full text-[10px] text-neutral-600 mt-1 sm:col-span-4">
+        Récord verificado = solo partidos graded. Muestras chicas (p.ej. 5-0) no garantizan el mismo % a futuro. Parlays se miden en la pestaña Parlay 4.
+      </p>
     </div>
   );
 };

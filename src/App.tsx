@@ -23,7 +23,7 @@ export default function App() {
   const [activeDate, setActiveDate] = useState<string>('2026-08-30');
   const [activeTab, setActiveTab] = useState<'preds' | 'pillars' | 'history' | 'lab' | 'parlay'>('preds');
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [selectedConfidence, setSelectedConfidence] = useState<string>('ALL');
+  const [selectedConfidence, setSelectedConfidence] = useState<string>('HIGH');
   const [selectedPrediction, setSelectedPrediction] = useState<GamePrediction | null>(null);
   const [isRunningPipeline, setIsRunningPipeline] = useState<boolean>(false);
   const [pipelineToast, setPipelineToast] = useState<string | null>(null);
@@ -178,9 +178,19 @@ export default function App() {
                 ))}
               </div>
             ) : (
-              <div className="p-12 text-center bg-[#18181b] border border-white/[0.06] rounded-2xl">
+              <div className="p-12 text-center bg-[#18181b] border border-white/[0.06] rounded-2xl space-y-3">
                 <p className="text-sm font-medium text-neutral-300">No hay partidos con los filtros actuales</p>
-                <p className="text-xs text-neutral-500 mt-1">Prueba seleccionando &quot;Todos los partidos&quot;.</p>
+                <p className="text-xs text-neutral-500 max-w-md mx-auto">
+                  Hoy no hay picks ≥65%. Eso es normal: forzar apuestas en coin flips empeora el bankroll.
+                  Usa &quot;Todos&quot; solo para análisis, o abre <span className="text-neutral-300">Parlay 4</span> para medir el slip experimental.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSelectedConfidence('ALL')}
+                  className="text-xs px-3 py-1.5 rounded-full bg-white text-black font-semibold"
+                >
+                  Ver todos (análisis)
+                </button>
               </div>
             )}
           </div>

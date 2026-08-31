@@ -13,38 +13,31 @@ export const QuickStartGuide: React.FC = () => {
         <div className="flex items-center gap-3">
           <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
           <span className="text-xs font-medium text-neutral-200">
-            ¿Cómo funciona KAL? (Explicación en 3 puntos)
+            ¿Cómo funciona KAL? (Reglas de uso)
           </span>
         </div>
-
-        <div className="flex items-center gap-1.5 text-xs text-neutral-400">
-          <span>{isOpen ? 'Ocultar' : 'Ver guía'}</span>
-          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-        </div>
+        <ChevronDown
+          className={`w-4 h-4 text-neutral-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+        />
       </button>
 
       {isOpen && (
-        <div className="px-5 pb-5 pt-2 border-t border-white/[0.04] grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          <div className="space-y-1">
-            <span className="text-white font-medium block">1. Pronósticos Diarios</span>
-            <p className="text-neutral-400 leading-relaxed text-[11px]">
-              El modelo calcula la probabilidad de victoria para cada partido de la jornada considerando 9 variables clave.
-            </p>
-          </div>
-
-          <div className="space-y-1">
-            <span className="text-white font-medium block">2. Factores de Decisión</span>
-            <p className="text-neutral-400 leading-relaxed text-[11px]">
-              Evalúa abridores (28%), bateo (18%), relevistas (16%) y métricas avanzadas de Statcast (14%).
-            </p>
-          </div>
-
-          <div className="space-y-1">
-            <span className="text-white font-medium block">3. Transparencia Total</span>
-            <p className="text-neutral-400 leading-relaxed text-[11px]">
-              Cada pronóstico queda sellado antes de empezar el partido con registro inmutable en el historial.
-            </p>
-          </div>
+        <div className="px-5 pb-5 space-y-3 border-t border-white/[0.04] pt-4 text-xs text-neutral-400 leading-relaxed">
+          <p>
+            <span className="text-neutral-200 font-medium">1. Singles primero.</span>{' '}
+            Prioriza picks HIGH (≥65%). LOW (~50–55%) es análisis, no stake fuerte.
+          </p>
+          <p>
+            <span className="text-neutral-200 font-medium">2. Cuota justa.</span>{' '}
+            Cada card muestra la americana/decimal del modelo. Solo hay value si la casa paga más que esa justa.
+          </p>
+          <p>
+            <span className="text-neutral-200 font-medium">3. Parlay 4 = experimento.</span>{' '}
+            KAL arma un slip de 4 y mide efectividad. Si sale COIN_FLIP_PARLAY, la probabilidad conjunta es baja (~7–12%); stake chico o no jugar.
+          </p>
+          <p className="text-neutral-500">
+            El récord de partidos sueltos y el de parlays se trackean por separado. Nunca se reescribe una predicción bloqueada.
+          </p>
         </div>
       )}
     </div>

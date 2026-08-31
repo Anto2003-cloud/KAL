@@ -21,7 +21,7 @@ import { GamePrediction } from './types';
 import { Search } from 'lucide-react';
 
 export default function App() {
-  const [activeDate, setActiveDate] = useState<string>('2026-08-30');
+  const [activeDate, setActiveDate] = useState<string>('2026-08-31');
   const [activeTab, setActiveTab] = useState<'preds' | 'pillars' | 'history' | 'lab' | 'parlay'>('preds');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedConfidence, setSelectedConfidence] = useState<string>('HIGH');
@@ -85,7 +85,14 @@ export default function App() {
     setTimeout(() => setPipelineToast(null), 3000);
   };
 
-  const availableDates = Object.keys(RAW_PREDICTIONS).sort().reverse();
+  const availableDates = Array.from(
+    new Set([
+      ...(livePreds?.length ? [activeDate] : []),
+      ...Object.keys(RAW_PREDICTIONS),
+      '2026-08-31',
+      '2026-08-30',
+    ])
+  ).sort().reverse();
   const currentPredictions = (livePreds && livePreds.length ? livePreds : (RAW_PREDICTIONS[activeDate] || [])) as GamePrediction[];
   const panelData = livePanel || TRACKING_PANEL;
 

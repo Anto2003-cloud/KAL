@@ -8,3 +8,11 @@ coverage/
 !.env.example
 __pycache__/
 *.pyc
+
+# Heavy ML data — Railway volume / local only
+kal_mlb/data/raw/
+kal_mlb/data/processed/
+kal_mlb/data/models/
+*.feather
+*.parquet
+*.joblib

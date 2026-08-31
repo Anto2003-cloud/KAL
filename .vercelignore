@@ -1,0 +1,15 @@
+kal_mlb
+kal_api
+kal_engine
+Dockerfile
+railway.toml
+AUTONOMIA.md
+**/*.feather
+**/*.parquet
+**/*.joblib
+**/*.pkl
+**/*.db
+**/data/**
+__pycache__
+*.pyc
+.git

@@ -13,6 +13,7 @@ import { ChampionPanel } from './ChampionPanel';
 import { ModelTrainerLab } from './ModelTrainerLab';
 import { FeatureImportanceView } from './FeatureImportanceView';
 import { DatasetSplitsView } from './DatasetSplitsView';
+import { TabIntro } from './TabIntro';
 
 interface LabAndValidationHubProps {
   champion: ChampionModel;
@@ -23,7 +24,17 @@ export const LabAndValidationHub: React.FC<LabAndValidationHubProps> = ({ champi
 
   return (
     <div className="space-y-4 font-mono">
-      
+      <TabIntro
+        title="Laboratorio — ¿qué es esto?"
+        bullets={[
+          "Zona técnica: cómo se entrenó el modelo y con qué datos (no es para apostar el día a día).",
+          "Modelo Campeón: la versión que hoy genera los % de los pronósticos.",
+          "Entrenador / Features / Splits: métricas internas (acierto en test, importancia de variables, train vs test).",
+          "Úsalo para entender el sistema; las apuestas salen de la pestaña Pronósticos y Parlay 4.",
+        ]}
+        warning="Números de laboratorio (AUC, log-loss, 2084 partidos) no son el mismo que el récord 5-0 del panel en vivo."
+      />
+
       {/* Subnavigation Bar */}
       <div className="bg-[#0e1017] border border-white/[0.08] rounded-2xl p-2 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 shadow-xs">
         <div className="flex flex-wrap items-center gap-1.5 p-1 bg-neutral-950 rounded-xl border border-white/[0.06] text-xs">

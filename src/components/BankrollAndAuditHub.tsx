@@ -11,6 +11,7 @@ import {
 import { TrackingPanelData } from '../types';
 import { ActiveLearningView } from './ActiveLearningView';
 import { TrackingAuditView } from './TrackingAuditView';
+import { TabIntro } from './TabIntro';
 
 interface BankrollAndAuditHubProps {
   panel: TrackingPanelData;
@@ -21,7 +22,17 @@ export const BankrollAndAuditHub: React.FC<BankrollAndAuditHubProps> = ({ panel 
 
   return (
     <div className="space-y-4 font-mono">
-      
+      <TabIntro
+        title="Historial — ¿qué es esto?"
+        bullets={[
+          "Aquí se guardan los partidos que ya terminaron y si KAL acertó o falló (HIT / MISS).",
+          "El 'ledger' es el registro: predicción bloqueada antes del juego + resultado real.",
+          "Balance de unidades: simulación de +1u por acierto a cuota justa (no es dinero de una casa real).",
+          "Mientras el sistema no esté en vivo, el récord puede ser una muestra de prueba (ej. 5-0), no tu temporada completa.",
+        ]}
+        warning="Si ves 5-0 y +34.8u: es demo/muestra pequeña. No significa que el modelo vaya 100% en vivo."
+      />
+
       {/* Subnavigation Bar */}
       <div className="bg-[#0e1017] border border-white/[0.08] rounded-2xl p-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shadow-xs">
         <div className="flex items-center gap-1.5 p-1 bg-neutral-950 rounded-xl border border-white/[0.06] text-xs">
@@ -34,7 +45,7 @@ export const BankrollAndAuditHub: React.FC<BankrollAndAuditHubProps> = ({ panel 
             }`}
           >
             <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-            <span>1. Balance de Ganancias (+34.8u)</span>
+            <span>1. Balance (simulado)</span>
           </button>
 
           <button
@@ -52,7 +63,7 @@ export const BankrollAndAuditHub: React.FC<BankrollAndAuditHubProps> = ({ panel 
 
         <div className="text-[11px] text-neutral-400 px-3 py-1 bg-neutral-950 rounded-xl border border-white/[0.06] flex items-center gap-2 self-start sm:self-center">
           <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-          <span>Récord: <strong>5-0 (100% acierto)</strong> · +34.8u ganadas</span>
+          <span>Récord panel: <strong>{panel.record}</strong> · {panel.n_graded} graded · muestra</span>
         </div>
       </div>
 

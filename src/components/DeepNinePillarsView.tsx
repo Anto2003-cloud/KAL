@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { SAMPLE_NINE_PILLARS_GAMES } from '../data/ninePillarsData';
 import { PillarCategory } from '../types';
+import { TabIntro } from './TabIntro';
 
 interface CustomPillarSimState {
   pitcherEdge: number; // -5 to +5
@@ -89,6 +90,16 @@ export const DeepNinePillarsView: React.FC = () => {
 
   return (
     <div className="space-y-4">
+      <TabIntro
+        title="Modelo (9 factores) — ¿qué es esto?"
+        bullets={[
+          "Explica POR QUÉ un partido tiene un %: abridor, bateo, bullpen, lesiones, lineup, Statcast, matchup, estadio y clima.",
+          "Cada factor empuja hacia el local o el visitante; juntos forman la probabilidad que ves en Pronósticos.",
+          "No es una apuesta aparte: es el desglose del mismo pick.",
+          "Si un día no hay edge, verás factores casi empatados — coherente con confianza LOW.",
+        ]}
+        warning="Algunos números de esta vista pueden ser ilustrativos hasta que el backend alimente cada partido en vivo."
+      />
 
       {/* Honest disclaimer: this view runs on illustrative sample data, not the real trained model */}
       <div className="bg-white/[0.04] border border-white/[0.1] rounded-2xl px-4 py-3 flex items-start gap-2.5">

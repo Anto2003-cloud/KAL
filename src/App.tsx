@@ -131,6 +131,10 @@ export default function App() {
         {/* PRONÓSTICOS TAB */}
         {activeTab === 'preds' && (
           <div className="space-y-4">
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 text-[11px] text-amber-200/90">
+              <strong className="text-amber-100">Modo datos embebidos.</strong> Las predicciones de esta web aún no se actualizan solas cada día (no hay backend en vivo).
+              El 5-0 es una muestra de prueba graded, no “todo lo que debiste apostar”. Pronósticos = análisis del día cargado; Parlay 4 = experimento medible.
+            </div>
             {/* Filter controls */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">

@@ -4,12 +4,13 @@ kal_engine
 Dockerfile
 railway.toml
 AUTONOMIA.md
+MEJORAS_KAL.md
 **/*.feather
 **/*.parquet
 **/*.joblib
 **/*.pkl
 **/*.db
-**/data/**
-__pycache__
-*.pyc
+**/*.py
+**/requirements*.txt
+**/__pycache__
 .git

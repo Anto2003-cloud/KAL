@@ -106,10 +106,43 @@ export default function App() {
         else if (m === 9 && dayN >= 15) setSeasonPhase('stretch_run');
         else setSeasonPhase('regular');
       }
-      // auto-grade parlays from history winners
+      // auto-grade parlays and reconcile panel stats from history
       try {
         const hist = await fetchLiveHistory(500);
         if (hist && !cancelled) {
+          const gradedRows = hist.filter((h) => h.isGraded);
+          const pendingRows = hist.filter((h) => !h.isGraded);
+          const hits = gradedRows.filter((h) => h.isHit === true).length;
+          const misses = gradedRows.filter((h) => h.isHit === false).length;
+          const nGraded = gradedRows.length;
+          const units = gradedRows.reduce((acc, h) => acc + (h.units || 0), 0);
+
+          const byConf: Record<string, { n: number; hits: number; acc: number }> = {};
+          for (const conf of ['HIGH', 'MEDIUM', 'LOW']) {
+            const inConf = gradedRows.filter((h) => h.conf === conf);
+            if (inConf.length > 0) {
+              const chits = inConf.filter((h) => h.isHit === true).length;
+              byConf[conf] = { n: inConf.length, hits: chits, acc: chits / inConf.length };
+            }
+          }
+
+          setLivePanel((prev: any) => ({
+            ...(prev || {}),
+            updated_at: prev?.updated_at || new Date().toISOString(),
+            n_graded: nGraded,
+            n_pending: pendingRows.length,
+            hits,
+            misses,
+            accuracy: nGraded > 0 ? hits / nGraded : (prev?.accuracy ?? 1.0),
+            record: `${hits}-${misses}`,
+            units_flat: units,
+            by_confidence: Object.keys(byConf).length > 0 ? byConf : (prev?.by_confidence || {}),
+          }));
+
+          setLiveNote(
+            `Conectado · récord ${hits}-${misses} · ${nGraded} graded · preds hoy ${st.raw?.today_preds ?? '—'}`
+          );
+
           const winners: Record<number, string> = {};
           for (const h of hist) {
             if (h.isGraded && h.home && h.away) {
@@ -192,13 +225,44 @@ export default function App() {
     (async () => {
       try {
         if (isLiveConfigured()) {
-          const [preds, panel, st] = await Promise.all([
+          const [preds, panel, st, hist] = await Promise.all([
             fetchLivePreds(activeDate),
             fetchLivePanel(),
             fetchLiveStatus(),
+            fetchLiveHistory(500),
           ]);
           if (preds && preds.length) setLivePreds(preds as GamePrediction[]);
           if (panel) setLivePanel(panel as any);
+          if (hist) {
+            const gradedRows = hist.filter((h) => h.isGraded);
+            const pendingRows = hist.filter((h) => !h.isGraded);
+            const hits = gradedRows.filter((h) => h.isHit === true).length;
+            const misses = gradedRows.filter((h) => h.isHit === false).length;
+            const nGraded = gradedRows.length;
+            const units = gradedRows.reduce((acc, h) => acc + (h.units || 0), 0);
+
+            const byConf: Record<string, { n: number; hits: number; acc: number }> = {};
+            for (const conf of ['HIGH', 'MEDIUM', 'LOW']) {
+              const inConf = gradedRows.filter((h) => h.conf === conf);
+              if (inConf.length > 0) {
+                const chits = inConf.filter((h) => h.isHit === true).length;
+                byConf[conf] = { n: inConf.length, hits: chits, acc: chits / inConf.length };
+              }
+            }
+
+            setLivePanel((prev: any) => ({
+              ...(prev || {}),
+              updated_at: prev?.updated_at || new Date().toISOString(),
+              n_graded: nGraded,
+              n_pending: pendingRows.length,
+              hits,
+              misses,
+              accuracy: nGraded > 0 ? hits / nGraded : (prev?.accuracy ?? 1.0),
+              record: `${hits}-${misses}`,
+              units_flat: units,
+              by_confidence: Object.keys(byConf).length > 0 ? byConf : (prev?.by_confidence || {}),
+            }));
+          }
           if (st.ok) {
             setLiveMode(true);
             setLiveNote('Conectado al cerebro vivo (API) — refresco manual');

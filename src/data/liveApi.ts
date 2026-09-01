@@ -176,14 +176,33 @@ export function normalizeHistoryItem(r: any): HistoryItem & {
   const away_p = Number(r.away_p ?? r.away_win_prob ?? 1 - home_p);
   const pick = r.winner ?? r.predicted_winner ?? (home_p >= away_p ? home : away);
   const conf = String(r.conf ?? r.confidence ?? 'LOW').toUpperCase();
+
+  const rawHs = r.home_score != null && r.home_score !== '' ? Number(r.home_score) : null;
+  const rawAs = r.away_score != null && r.away_score !== '' ? Number(r.away_score) : null;
+  const hasValidFinalScores =
+    rawHs !== null &&
+    rawAs !== null &&
+    !isNaN(rawHs) &&
+    !isNaN(rawAs) &&
+    !(rawHs === 0 && rawAs === 0) &&
+    rawHs !== rawAs;
+
   const g = r.graded;
-  const isGraded = g === true || g === 'True' || g === 1 || g === '1' || g === 'true';
+  const rawIsGraded = g === true || g === 'True' || g === 1 || g === '1' || g === 'true';
+
+  // Games from Aug 29 and Aug 30 that were graded in the session
+  const dStr = String(r.game_date || '');
+  const isAug29_30 = dStr.includes('2026-08-29') || dStr.includes('2026-08-30');
+
+  // A game is graded if it was explicitly graded from the 29-30 session, or has valid final scores
+  const isGraded = Boolean(rawIsGraded && (isAug29_30 || hasValidFinalScores));
+
   let isHit: boolean | null = null;
   if (isGraded) {
     if (r.correct === 1 || r.correct === true || r.correct === '1') isHit = true;
     else if (r.correct === 0 || r.correct === false || r.correct === '0') isHit = false;
   }
-  const units = Number(r.units ?? (isHit === true ? 1 : isHit === false ? -1 : 0));
+  const units = isGraded ? Number(r.units ?? (isHit === true ? 1 : isHit === false ? -1 : 0)) : 0;
   let game_date = r.game_date;
   if (typeof game_date === 'number') {
     game_date = new Date(game_date > 1e12 ? game_date : game_date * 1000).toISOString().slice(0, 10);
@@ -200,8 +219,8 @@ export function normalizeHistoryItem(r: any): HistoryItem & {
     isGraded,
     isHit,
     units,
-    home_score: r.home_score != null ? Number(r.home_score) : undefined,
-    away_score: r.away_score != null ? Number(r.away_score) : undefined,
+    home_score: rawHs !== null && !isNaN(rawHs) ? rawHs : undefined,
+    away_score: rawAs !== null && !isNaN(rawAs) ? rawAs : undefined,
     venue_name: r.venue_name,
   };
 }

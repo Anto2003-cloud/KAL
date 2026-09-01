@@ -88,10 +88,62 @@ def _load_preds(day: str) -> list[dict]:
     return []
 
 
+def _is_item_final(r: dict) -> bool:
+    s = str(r.get("status") or r.get("status_x") or r.get("status_y") or r.get("abstract_state") or "").strip().lower()
+    non_final = ["scheduled", "pre-game", "warmup", "in progress", "live", "delayed", "postponed", "cancelled", "suspended"]
+    for nf in non_final:
+        if nf in s:
+            return False
+    is_final_status = "final" in s or "game over" in s or "completed" in s
+    if not is_final_status:
+        return False
+    try:
+        hs = r.get("home_score")
+        as_ = r.get("away_score")
+        if hs is None or as_ is None:
+            return False
+        f_hs, f_as = float(hs), float(as_)
+        if f_hs == 0 and f_as == 0:
+            return False
+        if f_hs == f_as:
+            return False
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def _sanitize_history_row(r: dict) -> dict:
+    row = dict(r)
+    if not _is_item_final(row):
+        row["graded"] = False
+        row["correct"] = None
+        row["units"] = 0
+        row["home_win_actual"] = None
+    return row
+
+
 def _load_panel() -> dict:
     panel_path = RESULTS / "tracking_panel.json"
     if panel_path.exists():
-        return json.loads(panel_path.read_text(encoding="utf-8"))
+        try:
+            p = json.loads(panel_path.read_text(encoding="utf-8"))
+            # Validate against sanitized history if present
+            rows = _load_history()
+            if rows:
+                g_rows = [r for r in rows if r.get("graded") is True or r.get("graded") == "True" or r.get("graded") == 1]
+                if len(g_rows) != p.get("n_graded"):
+                    hits = sum(1 for r in g_rows if r.get("correct") == 1 or r.get("correct") is True or r.get("correct") == "1")
+                    n_g = len(g_rows)
+                    misses = n_g - hits
+                    p["n_graded"] = n_g
+                    p["n_pending"] = len(rows) - n_g
+                    p["hits"] = hits
+                    p["misses"] = misses
+                    p["accuracy"] = round(hits / n_g, 4) if n_g > 0 else 0
+                    p["record"] = f"{hits}-{misses}"
+            return p
+        except Exception as e:
+            log.warning("load panel parse %s", e)
     return {
         "updated_at": None,
         "n_graded": 0,
@@ -109,43 +161,40 @@ def _load_panel() -> dict:
 
 
 def _load_history() -> list[dict]:
-    """All graded + pending predictions for Historial."""
+    """All graded + pending predictions for Historial, sanitized so only true finals are graded."""
     RESULTS.mkdir(parents=True, exist_ok=True)
+    rows = []
     # prefer json export
     jp = RESULTS / "graded_predictions.json"
     if jp.exists():
         try:
-            rows = json.loads(jp.read_text(encoding="utf-8"))
-            if isinstance(rows, list):
-                return rows
+            data = json.loads(jp.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                rows = data
         except Exception as e:
             log.warning("graded json: %s", e)
-    # feather / csv
-    for name in ("graded_predictions.feather", "graded_predictions.csv"):
-        path = RESULTS / name
-        if not path.exists():
-            continue
-        try:
-            import pandas as pd
-            df = pd.read_feather(path) if name.endswith(".feather") else pd.read_csv(path)
-            # only useful cols
-            recs = json.loads(df.to_json(orient="records", date_format="iso"))
-            # also write json cache
+    # feather / csv fallback if empty
+    if not rows:
+        for name in ("graded_predictions.feather", "graded_predictions.csv"):
+            path = RESULTS / name
+            if not path.exists():
+                continue
             try:
-                jp.write_text(json.dumps(recs, default=str)[:2_000_000], encoding="utf-8")
+                import pandas as pd
+                df = pd.read_feather(path) if name.endswith(".feather") else pd.read_csv(path)
+                recs = json.loads(df.to_json(orient="records", date_format="iso"))
+                rows = recs
+                break
+            except Exception as e:
+                log.warning("load %s: %s", name, e)
+    if not rows:
+        for jf in sorted(PRED_DIR.glob("preds_*.json")):
+            try:
+                rows.extend(json.loads(jf.read_text(encoding="utf-8")))
             except Exception:
                 pass
-            return recs
-        except Exception as e:
-            log.warning("load %s: %s", name, e)
-    # fallback: all pred json/csv files, mark ungraded
-    rows = []
-    for jf in sorted(PRED_DIR.glob("preds_*.json")):
-        try:
-            rows.extend(json.loads(jf.read_text(encoding="utf-8")))
-        except Exception:
-            pass
-    return rows
+
+    return [_sanitize_history_row(r) for r in rows]
 
 
 

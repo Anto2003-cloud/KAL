@@ -49,6 +49,46 @@ def load_all_predictions() -> pd.DataFrame:
     return out
 
 
+def is_game_truly_final(row: pd.Series | dict) -> bool:
+    """
+    Returns True ONLY if the game has concluded with an official final score.
+    Games that are Scheduled, Pre-Game, Warmup, In Progress, Delayed, Postponed,
+    Cancelled, Suspended, or have 0-0 unplayed scores are strictly NOT final.
+    """
+    abstract = str(row.get("abstract_state") or "").strip().lower()
+    status = str(row.get("status") or "").strip().lower()
+
+    # Reject non-final states
+    non_final = ["scheduled", "pre-game", "warmup", "in progress", "live", "delayed", "postponed", "cancelled", "suspended"]
+    for nf in non_final:
+        if nf in status or nf in abstract:
+            return False
+
+    # Must have final status
+    is_final_status = (
+        abstract == "final"
+        or "final" in status
+        or "game over" in status
+        or "completed" in status
+    )
+    if not is_final_status:
+        return False
+
+    try:
+        hs = float(row.get("home_score"))
+        as_ = float(row.get("away_score"))
+        if pd.isna(hs) or pd.isna(as_):
+            return False
+        # In official MLB games, a completed game cannot finish 0-0 or tied
+        if hs == 0 and as_ == 0:
+            return False
+        if hs == as_:
+            return False
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
 def fetch_final_scores(game_pks: list[int]) -> pd.DataFrame:
     """Pull final scores for given game_pks from schedule files + API fallback."""
     frames = []
@@ -60,14 +100,18 @@ def fetch_final_scores(game_pks: list[int]) -> pd.DataFrame:
             pass
     intel = RAW / "intel" / "schedule_window_latest.feather"
     if intel.exists():
-        frames.append(pd.read_feather(intel))
+        try:
+            frames.append(pd.read_feather(intel))
+        except Exception:
+            pass
 
     if frames:
         hist = pd.concat(frames, ignore_index=True)
         hist = hist.drop_duplicates("game_pk", keep="last")
         hist["home_score"] = pd.to_numeric(hist["home_score"], errors="coerce")
         hist["away_score"] = pd.to_numeric(hist["away_score"], errors="coerce")
-        done = hist[hist["home_score"].notna() & hist["game_pk"].isin(game_pks)]
+        final_mask = hist.apply(is_game_truly_final, axis=1)
+        done = hist[final_mask & hist["game_pk"].isin(game_pks)].copy()
     else:
         done = pd.DataFrame()
 
@@ -81,13 +125,14 @@ def fetch_final_scores(game_pks: list[int]) -> pd.DataFrame:
             live = fetcher.get_schedule(d0.isoformat(), d1.isoformat())
             live["home_score"] = pd.to_numeric(live["home_score"], errors="coerce")
             live["away_score"] = pd.to_numeric(live["away_score"], errors="coerce")
-            extra = live[live["game_pk"].isin(missing) & live["home_score"].notna()]
+            live_final_mask = live.apply(is_game_truly_final, axis=1)
+            extra = live[live["game_pk"].isin(missing) & live_final_mask]
             done = pd.concat([done, extra], ignore_index=True) if not done.empty else extra
         except Exception as e:
             logger.warning("API score refresh failed: %s", e)
 
     if done.empty:
-        return pd.DataFrame(columns=["game_pk", "home_score", "away_score", "status"])
+        return pd.DataFrame(columns=["game_pk", "home_score", "away_score", "home_win_actual", "status"])
     done = done.drop_duplicates("game_pk", keep="last")
     done["home_win_actual"] = (done["home_score"] > done["away_score"]).astype(int)
     return done[["game_pk", "home_score", "away_score", "home_win_actual", "status"]].copy()
@@ -103,7 +148,7 @@ def grade_predictions(preds: pd.DataFrame | None = None) -> pd.DataFrame:
     scores = fetch_final_scores(preds["game_pk"].tolist())
     if scores.empty:
         logger.info("No final scores available yet for pending predictions")
-        return preds.assign(graded=False)
+        return preds.assign(graded=False, correct=np.nan, units=np.nan)
 
     m = preds.merge(scores, on="game_pk", how="left")
     m["graded"] = m["home_win_actual"].notna()

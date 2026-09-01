@@ -78,15 +78,16 @@ export const TrackingAuditView: React.FC<TrackingAuditViewProps> = ({ panel }) =
         <div className="bg-[#0e1017] border border-white/[0.08] rounded-xl p-4">
           <div className="text-[10px] text-neutral-500 uppercase">Récord</div>
           <div className="text-xl font-semibold text-white mt-1">
-            {panel.record || `${hits}-${misses}`}
+            {hits}-{misses}
           </div>
-          <div className="text-[10px] text-neutral-500">{panel.n_graded ?? graded.length} graded</div>
+          <div className="text-[10px] text-neutral-500">{graded.length} calificados</div>
         </div>
         <div className="bg-[#0e1017] border border-white/[0.08] rounded-xl p-4">
           <div className="text-[10px] text-neutral-500 uppercase">Acierto</div>
           <div className="text-xl font-semibold text-emerald-400 mt-1">
-            {panel.accuracy != null ? `${(panel.accuracy * 100).toFixed(1)}%` : '—'}
+            {graded.length > 0 ? `${((hits / graded.length) * 100).toFixed(1)}%` : '—'}
           </div>
+          <div className="text-[10px] text-neutral-500">Solo partidos finalizados</div>
         </div>
         <div className="bg-[#0e1017] border border-white/[0.08] rounded-xl p-4">
           <div className="text-[10px] text-neutral-500 uppercase">Unidades</div>
@@ -94,12 +95,14 @@ export const TrackingAuditView: React.FC<TrackingAuditViewProps> = ({ panel }) =
             {units >= 0 ? '+' : ''}
             {units.toFixed(1)}u
           </div>
+          <div className="text-[10px] text-neutral-500">Simulación flat (±1u)</div>
         </div>
         <div className="bg-[#0e1017] border border-white/[0.08] rounded-xl p-4">
           <div className="text-[10px] text-neutral-500 uppercase">Pendientes</div>
           <div className="text-xl font-semibold text-white mt-1">
-            {panel.n_pending ?? pending.length}
+            {pending.length}
           </div>
+          <div className="text-[10px] text-neutral-500">Por jugar o en progreso</div>
         </div>
       </div>
 

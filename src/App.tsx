@@ -353,6 +353,7 @@ export default function App() {
             date={activeDate}
             history={parlayHistory}
             onLockSlip={lockParlaySlip}
+            marketLines={marketLines}
           />
         )}
 

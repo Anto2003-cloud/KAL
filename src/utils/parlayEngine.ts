@@ -154,7 +154,13 @@ export function honestyFor(p: number, legs: ParlayLeg[]): {
  * Anti-longshot:
  * - TOP4_SAFE: solo favoritos claros (p≥58%, justa americana ≤ -130)
  * - Nada de underdogs / cuotas altas (+money)
+ * - REGLA DURA DEL USUARIO: nunca jugar equipos con cuota justa PEOR que -130
+ *   (es decir, americana > -130, ej. -110, -120, o positiva). Esto aplica
+ *   SIEMPRE, sin importar la estrategia elegida — no es negociable ni se
+ *   afloja para poder completar 4 piernas (ver ABSOLUTE_MAX_FAIR_AMERICAN).
  */
+const ABSOLUTE_MAX_FAIR_AMERICAN = -130;
+
 export function buildKalPick4(
   games: GamePrediction[],
   date: string,
@@ -166,7 +172,11 @@ export function buildKalPick4(
   const minP =
     opts?.min_leg_prob ??
     (strategy === 'TOP4_SAFE' ? 0.58 : strategy === 'TOP4_HIGH_ONLY' ? 0.55 : 0.52);
-  const maxAm = opts?.max_fair_american ?? (strategy === 'TOP4_SAFE' ? -130 : -110);
+  // El piso de -130 NUNCA se afloja, sin importar qué estrategia o `opts` se pase.
+  // Antes esto caía a -110 para estrategias que no fueran TOP4_SAFE — eso
+  // dejaba pasar favoritos débiles/cuotas altas que el usuario pidió excluir.
+  const requestedAm = opts?.max_fair_american ?? (strategy === 'TOP4_SAFE' ? -130 : -110);
+  const maxAm = Math.min(requestedAm, ABSOLUTE_MAX_FAIR_AMERICAN);
 
   let pool = [...games];
   if (strategy === 'TOP4_HIGH_ONLY') {
@@ -192,17 +202,12 @@ export function buildKalPick4(
   pool = pool.filter((g) => passes(g, 0));
 
   if (pool.length < 4) {
-    // un solo relajo: -0.02 en prob y 15 pts en americana
-    pool = [...games].filter((g) => {
-      const p = legProb(g);
-      if (p < minP - 0.02) return false;
-      const am = fairAmericanNum(p);
-      if (maxAm <= 0) {
-        if (am > maxAm + 15) return false;
-        if (am >= 100) return false;
-      } else if (am > maxAm + 20) return false;
-      return true;
-    });
+    // Único relajo permitido: -0.02 en probabilidad mínima del modelo.
+    // El piso de cuota (maxAm, nunca peor que -130) NO se relaja — si no
+    // hay 4 partidos que cumplan -130 hoy, no se arma el parlay. Antes
+    // esto aflojaba la cuota +15/+20 puntos para forzar las 4 piernas,
+    // que es exactamente lo que colaba cuotas altas sin avisar.
+    pool = [...games].filter((g) => passes(g, 0.02));
   }
   if (pool.length < 4) return null;
 

@@ -74,37 +74,35 @@ export function valueForPick(
 }
 
 /** The Odds API — opcional */
-export async function fetchMlbMoneylineOdds(dateIso: string): Promise<MarketLine[]> {
-  const key =
-    (import.meta as any).env?.VITE_ODDS_API_KEY ||
-    (import.meta as any).env?.VITE_THE_ODDS_API_KEY ||
-    '';
-  if (!key) return [];
+/**
+ * Trae moneylines vía el proxy del backend (/api/odds), que guarda la key
+ * de The Odds API del lado del servidor (Railway, env var ODDS_API_KEY).
+ *
+ * ANTES esta función pegaba directo a api.the-odds-api.com usando
+ * VITE_ODDS_API_KEY del lado del cliente — cualquier variable VITE_* queda
+ * compilada en el bundle JS público, visible con F12 por cualquiera. Con
+ * un plan pago de The Odds API eso es una key filtrada de verdad. El
+ * backend ya tenía /api/odds construido exactamente para esto; solo
+ * faltaba que el frontend lo llamara en vez de pegarle directo.
+ */
+export async function fetchMlbMoneylineOdds(_dateIso: string): Promise<MarketLine[]> {
+  const apiBase =
+    (import.meta as any).env?.VITE_KAL_API_URL?.replace(/\/$/, '') ||
+    'https://kal-production-ae77.up.railway.app';
+  if (!apiBase) return [];
 
   try {
-    const url =
-      `https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/` +
-      `?apiKey=${encodeURIComponent(key)}&regions=us&markets=h2h&oddsFormat=decimal`;
-    const r = await fetch(url);
+    const r = await fetch(`${apiBase}/api/odds`, { cache: 'no-store' });
     if (!r.ok) return [];
     const data = await r.json();
-    if (!Array.isArray(data)) return [];
-    return data.map((g: any) => {
-      const home = g.home_team;
-      const away = g.away_team;
-      const book = g.bookmakers?.[0];
-      const market = book?.markets?.find((m: any) => m.key === 'h2h');
-      const outcomes = market?.outcomes || [];
-      const homeO = outcomes.find((o: any) => o.name === home);
-      const awayO = outcomes.find((o: any) => o.name === away);
-      return {
-        home,
-        away,
-        home_decimal: homeO?.price,
-        away_decimal: awayO?.price,
-        book: book?.title,
-      } as MarketLine;
-    });
+    if (!data?.configured || !Array.isArray(data.lines)) return [];
+    return data.lines.map((l: any) => ({
+      home: l.home,
+      away: l.away,
+      home_decimal: l.home_decimal,
+      away_decimal: l.away_decimal,
+      book: l.book,
+    })) as MarketLine[];
   } catch {
     return [];
   }

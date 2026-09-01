@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { GamePrediction } from '../types';
+import { findMarketLine, type MarketLine } from '../utils/marketOdds';
 import {
   buildKalPick4,
   computeParlayStats,
@@ -23,6 +24,7 @@ interface Props {
   date: string;
   history?: KalParlaySlip[];
   onLockSlip?: (slip: KalParlaySlip) => void;
+  marketLines?: MarketLine[];
 }
 
 const honestyColor = {
@@ -58,7 +60,7 @@ function loadPlays(): ParlayPlayLog[] {
   }
 }
 
-export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
+export function ParlayLab({ games, date, history = [], onLockSlip, marketLines = [] }: Props) {
   const [strategy, setStrategy] = useState<'TOP4_SAFE' | 'TOP4_PROB' | 'TOP4_HIGH_ONLY'>(
     'TOP4_SAFE'
   );
@@ -76,8 +78,10 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
     () =>
       buildKalPick4(games, date, effectiveStrategy, {
         min_leg_prob: effectiveStrategy === 'TOP4_SAFE' ? 0.58 : effectiveStrategy === 'TOP4_HIGH_ONLY' ? 0.55 : 0.52,
-        // negativa = solo favoritos (justa ≤ -130 en Seguro)
-        max_fair_american: effectiveStrategy === 'TOP4_SAFE' ? -130 : -110,
+        // Piso duro: nunca peor que -130, sin importar la estrategia (ver
+        // ABSOLUTE_MAX_FAIR_AMERICAN en parlayEngine.ts). Antes decía -110
+        // para estrategias no-Seguras, lo cual ya no aplica.
+        max_fair_american: -130,
       }),
     [games, date, effectiveStrategy]
   );
@@ -90,6 +94,38 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
   }, [bank, slip]);
 
   const stats = useMemo(() => computeParlayStats(history), [history]);
+
+  /**
+   * Referencia de cuota real de casa de apuestas, calculada de las líneas
+   * moneyline por partido (mismas que usa la pestaña Pronósticos).
+   * OJO: esto es una ESTIMACIÓN por multiplicación de decimales de cada
+   * pierna — no es la cuota real que una casa daría para el parlay como
+   * combinado (las casas suelen aplicar vig extra al combinar piernas,
+   * y esto no cubre "same game parlay" con correlación entre piernas del
+   * mismo partido). Sirve como referencia/piso, no como cotización exacta.
+   */
+  const marketReference = useMemo(() => {
+    if (!slip) return null;
+    let combinedDecimal = 1;
+    let legsWithLine = 0;
+    const perLeg = slip.legs.map((leg) => {
+      const line = findMarketLine(marketLines, leg.home, leg.away);
+      const isHomePick = leg.pick === leg.home;
+      const dec = line ? (isHomePick ? line.home_decimal : line.away_decimal) : undefined;
+      if (dec && dec > 1) {
+        combinedDecimal *= dec;
+        legsWithLine += 1;
+      }
+      return { pick: leg.pick, book_decimal: dec, book: line?.book };
+    });
+    if (legsWithLine === 0) return null;
+    return {
+      perLeg,
+      legsWithLine,
+      totalLegs: slip.legs.length,
+      combinedDecimalEstimate: legsWithLine === slip.legs.length ? combinedDecimal : null,
+    };
+  }, [slip, marketLines]);
 
   const sim = useMemo(() => {
     if (!slip) return null;
@@ -516,6 +552,26 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
             <span className="text-[10px] text-neutral-600">
               En el ticket: si apuestas 1 y te devuelven 8.50 en total, la cuota es 8.50
             </span>
+            {marketReference && (
+              <div className="mt-1.5 flex items-center gap-2 text-[10px]">
+                <span className="text-neutral-500">
+                  Referencia de mercado ({marketReference.legsWithLine}/{marketReference.totalLegs} piernas con cuota real
+                  {marketReference.combinedDecimalEstimate
+                    ? `, combinado ~${marketReference.combinedDecimalEstimate.toFixed(2)}x`
+                    : ''}
+                  ):
+                </span>
+                {marketReference.combinedDecimalEstimate && (
+                  <button
+                    type="button"
+                    onClick={() => setBookOdds(marketReference.combinedDecimalEstimate!.toFixed(2))}
+                    className="px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/[0.1] text-neutral-300 hover:bg-white/[0.1]"
+                  >
+                    usar {marketReference.combinedDecimalEstimate.toFixed(2)}x
+                  </button>
+                )}
+              </div>
+            )}
           </label>
         </div>
         {/* Preview P&L */}

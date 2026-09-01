@@ -343,35 +343,74 @@ export function defaultBankroll(): BankrollState {
   };
 }
 
+export type PlayAdvice = 'JUGAR' | 'PRECAUCION' | 'NO_JUGAR';
+
 export type StakePlanDecision = {
   mode: 'BASE_10' | 'RECOVERY_20' | 'BLOCKED';
   pct: number;
   stake: number;
   reason: string;
   force_safe_strategy: boolean;
+  /** Recomendación explícita de KAL */
+  play_advice: PlayAdvice;
+  play_advice_title: string;
+  play_advice_detail: string;
 };
 
 /**
- * Plan del usuario:
- * - Normal: 10% del bank actual
- * - Tras MISS jugado: 20% al día siguiente en parlay más seguro
- * - Tras HIT o SKIP: vuelve a 10%
- * - Si recovery pero slip es COIN_FLIP: no recomienda 20% (bloquea o avisa)
+ * Plan del usuario + recomendación JUGAR / PRECAUCIÓN / NO JUGAR.
  */
 export function stakeForUserPlan(
   bank: BankrollState,
-  honesty: 'EDGE_OK' | 'EDGE_DEBIL' | 'COIN_FLIP_PARLAY'
+  honesty: 'EDGE_OK' | 'EDGE_DEBIL' | 'COIN_FLIP_PARLAY',
+  combinedProb?: number
 ): StakePlanDecision {
   const recovery = Boolean(bank.recovery_active);
+  const p = combinedProb ?? 0;
+
+  // --- Reglas de NO JUGAR (prioridad) ---
+  if (honesty === 'COIN_FLIP_PARLAY') {
+    return {
+      mode: recovery ? 'BLOCKED' : 'BASE_10',
+      pct: 0,
+      stake: 0,
+      reason: recovery
+        ? 'Recuperación activa pero el slip es COIN_FLIP.'
+        : 'Slip tipo moneda al aire.',
+      force_safe_strategy: true,
+      play_advice: 'NO_JUGAR',
+      play_advice_title: 'KAL recomienda: NO JUGAR',
+      play_advice_detail:
+        'La probabilidad conjunta es demasiado baja (varias piernas ~50%). Un parlay así no es edge, es varianza. Mejor registrar «No jugué» y conservar bankroll.',
+    };
+  }
+
+  if (p > 0 && p < 0.05) {
+    return {
+      mode: recovery ? 'BLOCKED' : 'BASE_10',
+      pct: 0,
+      stake: 0,
+      reason: 'Probabilidad conjunta < 5%.',
+      force_safe_strategy: true,
+      play_advice: 'NO_JUGAR',
+      play_advice_title: 'KAL recomienda: NO JUGAR',
+      play_advice_detail:
+        'Menos de 5% de probabilidad conjunta. Aunque el plan diga 10% o 20%, KAL te recomienda pasar el día.',
+    };
+  }
+
   if (recovery) {
-    if (honesty === 'COIN_FLIP_PARLAY') {
+    if (honesty === 'EDGE_DEBIL') {
       return {
         mode: 'BLOCKED',
         pct: 0,
         stake: 0,
-        reason:
-          'Modo recuperación (20%), pero el slip de hoy es COIN_FLIP. No subas stake: espera un día más seguro o no juegues.',
+        reason: 'Recuperación 20% con edge débil: no forzar.',
         force_safe_strategy: true,
+        play_advice: 'NO_JUGAR',
+        play_advice_title: 'KAL recomienda: NO JUGAR (recuperación)',
+        play_advice_detail:
+          'Venía de un MISS y hoy el slip no es sólido (EDGE DÉBIL). Subir al 20% aquí es peor. Espera un día EDGE_OK o juega solo singles HIGH.',
       };
     }
     const pct = 0.2;
@@ -381,18 +420,46 @@ export function stakeForUserPlan(
       pct,
       stake,
       reason:
-        'Ayer (última jugada) fue MISS → hoy 20% del bank en parlay MÁS SEGURO para intentar recuperar, luego vuelves a 10%.',
+        'MISS reciente → hoy 20% en parlay MÁS SEGURO (EDGE_OK). Si aciertas, vuelves a 10%.',
       force_safe_strategy: true,
+      play_advice: honesty === 'EDGE_OK' ? 'JUGAR' : 'PRECAUCION',
+      play_advice_title:
+        honesty === 'EDGE_OK'
+          ? 'KAL recomienda: JUGAR (recuperación 20%)'
+          : 'KAL recomienda: PRECAUCIÓN',
+      play_advice_detail:
+        honesty === 'EDGE_OK'
+          ? 'Slip aceptable para tu plan de recuperación. Stake 20% del bank. Al marcar HIT vuelves a 10%.'
+          : 'Recuperación con slip no ideal. Si juegas, asume alta varianza.',
     };
   }
+
+  // Base 10%
   const pct = 0.1;
   const stake = Math.round(bank.current * pct * 100) / 100;
+  if (honesty === 'EDGE_DEBIL') {
+    return {
+      mode: 'BASE_10',
+      pct: 0,
+      stake: 0,
+      reason: 'Edge débil en día normal.',
+      force_safe_strategy: false,
+      play_advice: 'NO_JUGAR',
+      play_advice_title: 'KAL recomienda: NO JUGAR',
+      play_advice_detail:
+        'Hoy el parlay es EDGE DÉBIL. Con tu plan del 10% no compensa forzar. Pasa o usa solo un single HIGH en Pronósticos.',
+    };
+  }
   return {
     mode: 'BASE_10',
     pct,
     stake,
-    reason: 'Plan base: 10% del bank en el parlay del día.',
+    reason: 'Plan base: 10% del bank. Slip con EDGE_OK.',
     force_safe_strategy: false,
+    play_advice: 'JUGAR',
+    play_advice_title: 'KAL recomienda: JUGAR (10%)',
+    play_advice_detail:
+      'Parlay dentro de lo razonable para tu plan. Stake 10% del bank. Si pierdes, mañana modo recuperación 20% solo si el slip es bueno.',
   };
 }
 

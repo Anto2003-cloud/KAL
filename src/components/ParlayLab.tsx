@@ -83,9 +83,9 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
 
   const planDecision = useMemo(() => {
     if (!slip) {
-      return stakeForUserPlan(bank, 'COIN_FLIP_PARLAY');
+      return stakeForUserPlan(bank, 'COIN_FLIP_PARLAY', 0);
     }
-    return stakeForUserPlan(bank, slip.honesty_label);
+    return stakeForUserPlan(bank, slip.honesty_label, slip.combined_prob);
   }, [bank, slip]);
 
   const stats = useMemo(() => computeParlayStats(history), [history]);
@@ -126,7 +126,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
     } else {
       setPlayedToday(null);
       if (bank.staking_plan === 'PLAN_10_20') {
-        const d = stakeForUserPlan(bank, slip.honesty_label);
+        const d = stakeForUserPlan(bank, slip.honesty_label, slip.combined_prob);
         setStakeInput(d.stake ? String(d.stake) : '');
       } else {
         const sug = suggestStake(
@@ -155,8 +155,13 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
 
   const savePlay = (played: boolean) => {
     if (!slip) return;
-    if (played && planDecision.mode === 'BLOCKED') {
-      alert(planDecision.reason);
+    if (played && (planDecision.play_advice === 'NO_JUGAR' || planDecision.mode === 'BLOCKED')) {
+      alert(
+        planDecision.play_advice_title +
+          '\n\n' +
+          planDecision.play_advice_detail +
+          '\n\nKAL te recomienda registrar «No jugué».'
+      );
       return;
     }
     const stake =
@@ -342,32 +347,46 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
       </div>
 
 
-      {/* Plan 10/20 del usuario */}
+      {/* Recomendación KAL + plan 10/20 */}
       {bank.staking_plan === 'PLAN_10_20' && (
         <div
           className={`rounded-2xl border p-4 text-xs space-y-2 ${
-            planDecision.mode === 'RECOVERY_20'
-              ? 'border-amber-500/30 bg-amber-500/10 text-amber-100'
-              : planDecision.mode === 'BLOCKED'
-                ? 'border-rose-500/30 bg-rose-500/10 text-rose-100'
-                : 'border-cyan-500/20 bg-cyan-500/5 text-cyan-100'
+            planDecision.play_advice === 'NO_JUGAR'
+              ? 'border-rose-500/40 bg-rose-500/10'
+              : planDecision.play_advice === 'PRECAUCION'
+                ? 'border-amber-500/40 bg-amber-500/10'
+                : 'border-emerald-500/40 bg-emerald-500/10'
           }`}
         >
-          <div className="font-semibold text-sm text-white">Tu plan: 10% → si pierdes, 20% más seguro → vuelves a 10%</div>
-          <p>{planDecision.reason}</p>
-          <div className="flex flex-wrap gap-3 text-[11px] text-neutral-300">
-            <span>
-              Hoy: <strong className="text-white">{planDecision.mode}</strong>
-            </span>
-            <span>
-              Stake plan: <strong className="text-white">{planDecision.stake}</strong> ({(planDecision.pct * 100).toFixed(0)}%)
-            </span>
-            {bank.recovery_active && (
-              <span className="text-amber-300">Estrategia forzada: Seguro (≥53%)</span>
-            )}
+          <div
+            className={`text-base font-bold tracking-tight ${
+              planDecision.play_advice === 'NO_JUGAR'
+                ? 'text-rose-300'
+                : planDecision.play_advice === 'PRECAUCION'
+                  ? 'text-amber-200'
+                  : 'text-emerald-300'
+            }`}
+          >
+            {planDecision.play_advice_title}
           </div>
-          {planDecision.mode === 'BLOCKED' && (
-            <p className="text-rose-200">No registres “Sí lo jugué” al 20% hoy. Mejor “No jugué” o espera slip más seguro.</p>
+          <p className="text-neutral-200 leading-relaxed">{planDecision.play_advice_detail}</p>
+          <div className="flex flex-wrap gap-3 text-[11px] text-neutral-400 pt-1 border-t border-white/10">
+            <span>Plan: 10% → MISS → 20% seguro → HIT → 10%</span>
+            <span>
+              Modo: <strong className="text-neutral-200">{planDecision.mode}</strong>
+            </span>
+            {planDecision.play_advice !== 'NO_JUGAR' && (
+              <span>
+                Stake: <strong className="text-neutral-200">{planDecision.stake}</strong> (
+                {(planDecision.pct * 100).toFixed(0)}%)
+              </span>
+            )}
+            {bank.recovery_active && <span className="text-amber-300">Recuperación activa</span>}
+          </div>
+          {planDecision.play_advice === 'NO_JUGAR' && (
+            <p className="text-rose-200/90 font-medium">
+              Usa el botón «No jugué». El botón «Sí, lo jugué» está bloqueado mientras KAL diga NO JUGAR.
+            </p>
           )}
         </div>
       )}
@@ -463,14 +482,23 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
             <button
               type="button"
               onClick={() => savePlay(true)}
-              className="flex-1 px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold"
+              disabled={planDecision.play_advice === 'NO_JUGAR'}
+              className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold ${
+                planDecision.play_advice === 'NO_JUGAR'
+                  ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
+                  : 'bg-white text-black'
+              }`}
             >
-              Sí, lo jugué
+              {planDecision.play_advice === 'NO_JUGAR' ? 'Sí (bloqueado)' : 'Sí, lo jugué'}
             </button>
             <button
               type="button"
               onClick={() => savePlay(false)}
-              className="flex-1 px-3 py-2 rounded-xl bg-white/10 text-neutral-200 text-xs font-semibold border border-white/10"
+              className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold border ${
+                planDecision.play_advice === 'NO_JUGAR'
+                  ? 'bg-rose-500 text-white border-rose-400'
+                  : 'bg-white/10 text-neutral-200 border-white/10'
+              }`}
             >
               No jugué
             </button>

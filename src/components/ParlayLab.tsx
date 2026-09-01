@@ -450,73 +450,123 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
         <p className="px-4 py-3 text-xs text-neutral-400 border-t border-white/[0.06]">{slip.honesty_note}</p>
       </div>
 
-      {/* Registrar jugada */}
+      {/* Registrar jugada — dinero real */}
       <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-white">¿Jugaste este parlay?</h3>
+        <h3 className="text-sm font-semibold text-white">Registro de tu apuesta (P&amp;L real)</h3>
         <p className="text-[11px] text-neutral-400">
-          Registro solo en tu navegador (localStorage). Sirve para P&amp;L del mes y ajustar estrategia.
+          Pon <strong className="text-neutral-300">cuánto metiste</strong> y la <strong className="text-neutral-300">cuota decimal de tu casa</strong>
+          (o cuánto te pagan en total si gana). Así KAL calcula exactamente cuánto ganaste o perdiste.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="text-xs text-neutral-400">
-            Stake ({bank.currency})
+            1. ¿Cuánto le metiste? ({bank.currency})
             <input
               type="number"
+              min={0}
+              step="0.01"
               value={stakeInput}
               onChange={(e) => setStakeInput(e.target.value)}
               className="mt-1 w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
-              placeholder={String(suggested)}
+              placeholder={`Ej. ${suggested || 10}`}
             />
+            <span className="text-[10px] text-neutral-600">El dinero que apostaste en la casa</span>
           </label>
           <label className="text-xs text-neutral-400">
-            Cuota decimal de tu casa (opcional)
+            2. Cuota decimal de la casa (lo que paga el parlay)
             <input
               type="number"
+              min={1.01}
               step="0.01"
               value={bookOdds}
               onChange={(e) => setBookOdds(e.target.value)}
               className="mt-1 w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
-              placeholder={`Ref. modelo ${slip.fair_decimal_odds.toFixed(2)}`}
+              placeholder={`Ej. 8.50 — modelo sugiere ~${slip.fair_decimal_odds.toFixed(2)}`}
             />
+            <span className="text-[10px] text-neutral-600">
+              En el ticket: si apuestas 1 y te devuelven 8.50 en total, la cuota es 8.50
+            </span>
           </label>
-          <div className="flex items-end gap-2">
-            <button
-              type="button"
-              onClick={() => savePlay(true)}
-              disabled={planDecision.play_advice === 'NO_JUGAR'}
-              className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold ${
-                planDecision.play_advice === 'NO_JUGAR'
-                  ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
-                  : 'bg-white text-black'
-              }`}
-            >
-              {planDecision.play_advice === 'NO_JUGAR' ? 'Sí (bloqueado)' : 'Sí, lo jugué'}
-            </button>
-            <button
-              type="button"
-              onClick={() => savePlay(false)}
-              className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold border ${
-                planDecision.play_advice === 'NO_JUGAR'
-                  ? 'bg-rose-500 text-white border-rose-400'
-                  : 'bg-white/10 text-neutral-200 border-white/10'
-              }`}
-            >
-              No jugué
-            </button>
-          </div>
+        </div>
+        {/* Preview P&L */}
+        {(() => {
+          const st = parseFloat(stakeInput) || 0;
+          const dec = parseFloat(bookOdds) || slip.fair_decimal_odds;
+          const winProfit = st > 0 && dec > 1 ? st * (dec - 1) : 0;
+          const totalReturn = st > 0 && dec > 1 ? st * dec : 0;
+          return (
+            <div className="rounded-xl bg-black/30 border border-white/[0.06] p-3 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+              <div>
+                <div className="text-neutral-500">Si GANA (HIT)</div>
+                <div className="text-emerald-400 font-semibold">
+                  +{winProfit.toFixed(2)} {bank.currency}{' '}
+                  <span className="text-neutral-500 font-normal">(te devuelven {totalReturn.toFixed(2)})</span>
+                </div>
+              </div>
+              <div>
+                <div className="text-neutral-500">Si PIERDE (MISS)</div>
+                <div className="text-rose-400 font-semibold">
+                  −{st.toFixed(2)} {bank.currency}
+                </div>
+              </div>
+              <div>
+                <div className="text-neutral-500">Cuota usada</div>
+                <div className="text-white font-mono">
+                  {dec.toFixed(2)}x {bookOdds ? '(tu casa)' : '(ref. modelo)'}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => savePlay(true)}
+            disabled={planDecision.play_advice === 'NO_JUGAR'}
+            className={`flex-1 min-w-[140px] px-3 py-2.5 rounded-xl text-xs font-semibold ${
+              planDecision.play_advice === 'NO_JUGAR'
+                ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
+                : 'bg-white text-black'
+            }`}
+          >
+            {planDecision.play_advice === 'NO_JUGAR' ? 'Sí (bloqueado por KAL)' : 'Sí, lo jugué — guardar'}
+          </button>
+          <button
+            type="button"
+            onClick={() => savePlay(false)}
+            className={`flex-1 min-w-[140px] px-3 py-2.5 rounded-xl text-xs font-semibold border ${
+              planDecision.play_advice === 'NO_JUGAR'
+                ? 'bg-rose-500 text-white border-rose-400'
+                : 'bg-white/10 text-neutral-200 border-white/10'
+            }`}
+          >
+            No jugué
+          </button>
         </div>
         {playedToday === true && (
-          <div className="flex flex-wrap gap-2 text-xs items-center">
-            <span className="text-emerald-300">Registrado como jugado.</span>
-            <button type="button" className="underline text-neutral-400" onClick={() => settlePlay(slip.id, 'HIT')}>
-              Marcar HIT
-            </button>
-            <button type="button" className="underline text-neutral-400" onClick={() => settlePlay(slip.id, 'MISS')}>
-              Marcar MISS
-            </button>
+          <div className="space-y-2">
+            <p className="text-xs text-emerald-300">
+              Guardado. Cuando terminen los 4 juegos, marca el resultado para actualizar tu bankroll:
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                onClick={() => settlePlay(slip.id, 'HIT')}
+              >
+                Gané el parlay (HIT)
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                onClick={() => settlePlay(slip.id, 'MISS')}
+              >
+                Perdí el parlay (MISS)
+              </button>
+            </div>
           </div>
         )}
         {playedToday === false && (
-          <span className="text-xs text-neutral-500">Registrado: no jugado (no afecta bankroll).</span>
+          <span className="text-xs text-neutral-500">Registrado: no jugado (0 en el P&amp;L).</span>
         )}
       </div>
 
@@ -571,9 +621,10 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
                 <tr>
                   <th className="py-2">Fecha</th>
                   <th>¿Jugó?</th>
-                  <th>Stake</th>
+                  <th>Metí</th>
+                  <th>Cuota casa</th>
                   <th>Resultado</th>
-                  <th className="text-right">Profit</th>
+                  <th className="text-right">Gané / Perdí</th>
                 </tr>
               </thead>
               <tbody className="text-neutral-300">
@@ -582,6 +633,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
                     <td className="py-2">{p.date}</td>
                     <td>{p.played ? 'Sí' : 'No'}</td>
                     <td>{p.played ? p.stake : '—'}</td>
+                    <td>{p.played && p.book_decimal ? p.book_decimal.toFixed(2) : '—'}</td>
                     <td>{p.result || '—'}</td>
                     <td className={`text-right ${(p.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {p.played ? `${(p.profit ?? 0) >= 0 ? '+' : ''}${(p.profit ?? 0).toFixed(2)}` : '—'}

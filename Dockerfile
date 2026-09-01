@@ -11,6 +11,10 @@ RUN pip install --no-cache-dir -r /app/kal_api/requirements.railway.txt && \
 COPY kal_api /app/kal_api
 COPY kal_mlb /app/kal_mlb
 
+# Seed: modelos y raw que el volume vacío taparía
+RUN mkdir -p /app/seed_kal_data && \
+    cp -a /app/kal_mlb/data/. /app/seed_kal_data/ 2>/dev/null || true
+
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
 EXPOSE 8000

@@ -149,6 +149,41 @@ def _load_history() -> list[dict]:
 
 
 
+
+def _bootstrap_volume_from_seed():
+    """Si el volume está vacío (montado sobre data/), copiar seed de la imagen."""
+    import shutil
+    seed = Path("/app/seed_kal_data")
+    target = KAL / "data"
+    if not seed.exists():
+        log.warning("No seed at /app/seed_kal_data")
+        return {"seed": False}
+    target.mkdir(parents=True, exist_ok=True)
+    # copiar modelos si faltan
+    copied = []
+    for sub in ("models", "raw", "processed", "results", "predictions"):
+        src = seed / sub
+        dst = target / sub
+        if not src.exists():
+            continue
+        dst.mkdir(parents=True, exist_ok=True)
+        # si destino vacío o sin champion, copiar archivos que falten
+        for f in src.rglob("*"):
+            if f.is_dir():
+                continue
+            rel = f.relative_to(src)
+            out = dst / rel
+            if not out.exists():
+                out.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    shutil.copy2(f, out)
+                    copied.append(str(rel))
+                except Exception as e:
+                    log.warning("seed copy %s: %s", rel, e)
+    log.info("Volume bootstrap copied %d files", len(copied))
+    return {"seed": True, "copied": len(copied)}
+
+
 def run_cycle() -> dict:
     """Ejecuta el ciclo autónomo completo (intel → pred → grade → retrain gate)."""
     log.info("=== KAL autonomous cycle start ===")
@@ -350,6 +385,13 @@ async def _scheduler_loop():
 async def startup():
     RESULTS.mkdir(parents=True, exist_ok=True)
     PRED_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        boot = _bootstrap_volume_from_seed()
+        log.info("bootstrap: %s", boot)
+        _state["bootstrap"] = boot
+    except Exception as e:
+        log.exception("bootstrap failed")
+        _state["bootstrap_error"] = str(e)
     if STATE_FILE.exists():
         try:
             _state.update(json.loads(STATE_FILE.read_text(encoding="utf-8")))

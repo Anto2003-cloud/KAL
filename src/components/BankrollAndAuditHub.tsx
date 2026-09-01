@@ -25,12 +25,12 @@ export const BankrollAndAuditHub: React.FC<BankrollAndAuditHubProps> = ({ panel 
       <TabIntro
         title="Historial — ¿qué es esto?"
         bullets={[
-          "Aquí se guardan los partidos que ya terminaron y si KAL acertó o falló (HIT / MISS).",
-          "El 'ledger' es el registro: predicción bloqueada antes del juego + resultado real.",
-          "Balance de unidades: simulación de +1u por acierto a cuota justa (no es dinero de una casa real).",
-          "Mientras el sistema no esté en vivo, el récord puede ser una muestra de prueba (ej. 5-0), no tu temporada completa.",
+          "Ledger en vivo: todos los picks del API (HIT / MISS / pendientes).",
+          "Filtros: aciertos, fallos o pendientes.",
+          "Unidades = simulación flat ±1u por partido calificado (no es tu casa de apuestas).",
+          "La pestaña Balance puede seguir teniendo vistas demo; el Ledger usa Railway.",
         ]}
-        warning="Si ves 5-0 y +34.8u: es demo/muestra pequeña. No significa que el modelo vaya 100% en vivo."
+        warning="Si el ledger sale vacío, espera un ciclo del API o abre /api/history en Railway."
       />
 
       {/* Subnavigation Bar */}

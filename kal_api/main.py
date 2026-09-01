@@ -107,6 +107,48 @@ def _load_panel() -> dict:
     }
 
 
+
+def _load_history() -> list[dict]:
+    """All graded + pending predictions for Historial."""
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    # prefer json export
+    jp = RESULTS / "graded_predictions.json"
+    if jp.exists():
+        try:
+            rows = json.loads(jp.read_text(encoding="utf-8"))
+            if isinstance(rows, list):
+                return rows
+        except Exception as e:
+            log.warning("graded json: %s", e)
+    # feather / csv
+    for name in ("graded_predictions.feather", "graded_predictions.csv"):
+        path = RESULTS / name
+        if not path.exists():
+            continue
+        try:
+            import pandas as pd
+            df = pd.read_feather(path) if name.endswith(".feather") else pd.read_csv(path)
+            # only useful cols
+            recs = json.loads(df.to_json(orient="records", date_format="iso"))
+            # also write json cache
+            try:
+                jp.write_text(json.dumps(recs, default=str)[:2_000_000], encoding="utf-8")
+            except Exception:
+                pass
+            return recs
+        except Exception as e:
+            log.warning("load %s: %s", name, e)
+    # fallback: all pred json/csv files, mark ungraded
+    rows = []
+    for jf in sorted(PRED_DIR.glob("preds_*.json")):
+        try:
+            rows.extend(json.loads(jf.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    return rows
+
+
+
 def run_cycle() -> dict:
     """Ejecuta el ciclo autónomo completo (intel → pred → grade → retrain gate)."""
     log.info("=== KAL autonomous cycle start ===")
@@ -200,6 +242,23 @@ def preds(date_str: str | None = Query(None, alias="date")):
         "live": True,
         "source": "kal_mlb/data/predictions",
         "predictions": rows,
+    }
+
+
+
+@app.get("/api/history")
+def history(limit: int = Query(500, ge=1, le=2000)):
+    rows = _load_history()
+    # sort graded first, then by date desc
+    def key(r):
+        g = r.get("graded")
+        graded = g is True or g == "True" or g == 1 or g == "1"
+        return (0 if graded else 1, str(r.get("game_date") or ""), str(r.get("game_pk") or ""))
+    rows_sorted = sorted(rows, key=key)
+    return {
+        "count": len(rows_sorted),
+        "live": True,
+        "items": rows_sorted[:limit],
     }
 
 

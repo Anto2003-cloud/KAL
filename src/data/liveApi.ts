@@ -122,3 +122,90 @@ export async function triggerCycle(secret: string): Promise<any> {
   if (!r.ok) throw new Error(`cycle HTTP ${r.status}`);
   return r.json();
 }
+
+export interface HistoryItem {
+  game_pk: number;
+  game_date?: string;
+  home?: string;
+  away?: string;
+  home_team_abbr?: string;
+  away_team_abbr?: string;
+  home_sp?: string;
+  away_sp?: string;
+  home_starter_name?: string;
+  away_starter_name?: string;
+  winner?: string;
+  predicted_winner?: string;
+  home_p?: number;
+  away_p?: number;
+  home_win_prob?: number;
+  away_win_prob?: number;
+  conf?: string;
+  confidence?: string;
+  graded?: boolean | string | number;
+  correct?: number | boolean;
+  units?: number;
+  home_score?: number;
+  away_score?: number;
+  venue_name?: string;
+}
+
+export function normalizeHistoryItem(r: any): HistoryItem & {
+  home: string;
+  away: string;
+  pick: string;
+  prob: number;
+  conf: string;
+  isGraded: boolean;
+  isHit: boolean | null;
+  units: number;
+} {
+  const home = r.home ?? r.home_team_abbr ?? r.home_team ?? '?';
+  const away = r.away ?? r.away_team_abbr ?? r.away_team ?? '?';
+  const home_p = Number(r.home_p ?? r.home_win_prob ?? 0.5);
+  const away_p = Number(r.away_p ?? r.away_win_prob ?? 1 - home_p);
+  const pick = r.winner ?? r.predicted_winner ?? (home_p >= away_p ? home : away);
+  const conf = String(r.conf ?? r.confidence ?? 'LOW').toUpperCase();
+  const g = r.graded;
+  const isGraded = g === true || g === 'True' || g === 1 || g === '1' || g === 'true';
+  let isHit: boolean | null = null;
+  if (isGraded) {
+    if (r.correct === 1 || r.correct === true || r.correct === '1') isHit = true;
+    else if (r.correct === 0 || r.correct === false || r.correct === '0') isHit = false;
+  }
+  const units = Number(r.units ?? (isHit === true ? 1 : isHit === false ? -1 : 0));
+  let game_date = r.game_date;
+  if (typeof game_date === 'number') {
+    game_date = new Date(game_date > 1e12 ? game_date : game_date * 1000).toISOString().slice(0, 10);
+  }
+  return {
+    ...r,
+    game_pk: r.game_pk,
+    game_date: game_date || '',
+    home,
+    away,
+    pick,
+    prob: Math.max(home_p, away_p),
+    conf: conf === 'HIGH' || conf === 'MEDIUM' ? conf : 'LOW',
+    isGraded,
+    isHit,
+    units,
+    home_score: r.home_score != null ? Number(r.home_score) : undefined,
+    away_score: r.away_score != null ? Number(r.away_score) : undefined,
+    venue_name: r.venue_name,
+  };
+}
+
+export async function fetchLiveHistory(limit = 500): Promise<ReturnType<typeof normalizeHistoryItem>[] | null> {
+  if (!API_BASE) return null;
+  try {
+    const r = await fetch(`${API_BASE}/api/history?limit=${limit}`, { cache: 'no-store' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const items = j.items || j.predictions || [];
+    if (!Array.isArray(items)) return null;
+    return items.map(normalizeHistoryItem);
+  } catch {
+    return null;
+  }
+}

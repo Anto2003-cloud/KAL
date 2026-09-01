@@ -193,6 +193,13 @@ def update_tracking() -> dict:
             save.to_feather(path)
         except Exception:
             save.to_csv(RESULTS / "graded_predictions.csv", index=False)
+        try:
+            (RESULTS / "graded_predictions.json").write_text(
+                save.to_json(orient="records", date_format="iso"),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.warning("graded json export: %s", e)
         panel = compute_panel(graded)
         (RESULTS / "tracking_panel.json").write_text(json.dumps(panel, indent=2, ensure_ascii=False))
 

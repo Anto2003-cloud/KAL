@@ -528,7 +528,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
         </p>
         {stats.n_graded === 0 ? (
           <p className="text-xs text-neutral-400">
-            Aún sin parlays calificados. Bloquea el slip y, al cerrar los 4 juegos, registra HIT/MISS.
+            Aún sin parlays calificados. Al bloquear el slip, KAL auto-califica cuando el historial del API tenga ganadores de los 4 juegos (o marca HIT/MISS a mano).
           </p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

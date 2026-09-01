@@ -478,3 +478,16 @@ export function computePlayProfit(
   }
   return 0;
 }
+
+/** Califica slips OPEN usando mapa game_pk → ganador real (abbr). */
+export function autoGradeParlays(
+  slips: KalParlaySlip[],
+  winnersByPk: Record<number, string>
+): KalParlaySlip[] {
+  return slips.map((s) => {
+    if (s.status !== "OPEN") return s;
+    const known = s.legs.every((l) => winnersByPk[l.game_pk]);
+    if (!known) return s;
+    return gradeParlay(s, winnersByPk);
+  });
+}

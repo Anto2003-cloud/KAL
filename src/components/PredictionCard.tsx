@@ -5,13 +5,15 @@ import { TeamLogo } from './TeamLogo';
 import { generatePitcherVsTeamStats } from '../utils/pitcherVsOpponentHelper';
 import { ChevronRight } from 'lucide-react';
 import { formatFairLine, fairAmerican } from '../utils/fairOdds';
+import { valueForPick, type MarketLine } from '../utils/marketOdds';
 
 interface PredictionCardProps {
   prediction: GamePrediction;
   onSelect: (prediction: GamePrediction) => void;
+  marketLine?: MarketLine | null;
 }
 
-export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSelect }) => {
+export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSelect, marketLine }) => {
   const p = prediction;
   const homeMeta = TEAMS_META[p.home] || { name: p.home, city: p.home, primaryColor: '#000000' };
   const awayMeta = TEAMS_META[p.away] || { name: p.away, city: p.away, primaryColor: '#000000' };
@@ -29,6 +31,7 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
         : 'Edge fuerte';
 
   const dqScore = typeof (p as any).data_quality_score === 'number' ? (p as any).data_quality_score : null;
+  const value = valueForPick(p.winner, p.home, p.away, p.home_p, p.away_p, marketLine || null);
   const dqLabel =
     dqScore == null
       ? null
@@ -151,6 +154,12 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
         <div className="flex items-center justify-between text-xs">
           <span className="text-[11px] text-neutral-500">Cuota justa (modelo)</span>
           <span className="font-mono text-[11px] text-neutral-200">{fairLine}</span>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-[11px] text-neutral-500">Value vs mercado</span>
+          <span className={`text-[11px] font-medium ${value.has_value ? 'text-emerald-400' : 'text-neutral-400'}`}>
+            {value.label}
+          </span>
         </div>
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2 flex-wrap">

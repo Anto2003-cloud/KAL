@@ -9,7 +9,9 @@ import { BankrollAndAuditHub } from './components/BankrollAndAuditHub';
 import { LabAndValidationHub } from './components/LabAndValidationHub';
 import { ParlayLab } from './components/ParlayLab';
 import type { KalParlaySlip } from './utils/parlayEngine';
-import { fetchLivePreds, fetchLivePanel, fetchLiveStatus, isLiveConfigured } from './data/liveApi';
+import { fetchLivePreds, fetchLivePanel, fetchLiveStatus, isLiveConfigured, fetchLiveHistory } from './data/liveApi';
+import { fetchMlbMoneylineOdds, findMarketLine, type MarketLine } from './utils/marketOdds';
+import { autoGradeParlays } from './utils/parlayEngine';
 import {
   RAW_PREDICTIONS,
   TRACKING_PANEL,
@@ -32,6 +34,29 @@ export default function App() {
   const [liveNote, setLiveNote] = useState<string>('Comprobando API…');
   const [livePreds, setLivePreds] = useState<GamePrediction[] | null>(null);
   const [livePanel, setLivePanel] = useState<typeof TRACKING_PANEL | null>(null);
+  const [marketLines, setMarketLines] = useState<MarketLine[]>([]);
+  const [seasonPhase, setSeasonPhase] = useState<string>('regular');
+
+    const [parlayHistory, setParlayHistory] = useState<KalParlaySlip[]>(() => {
+    try {
+      const raw = localStorage.getItem('kal_parlay_history');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const lockParlaySlip = (slip: KalParlaySlip) => {
+    setParlayHistory((prev) => {
+      const next = [...prev.filter((s) => s.id !== slip.id), slip];
+      try {
+        localStorage.setItem('kal_parlay_history', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    setPipelineToast('Parlay de 4 bloqueado (inmutable)');
+    setTimeout(() => setPipelineToast(null), 3000);
+  };
+
 
   // Cargar cerebro vivo + refresco cada 3 min
   React.useEffect(() => {
@@ -66,6 +91,46 @@ export default function App() {
       else setLivePreds(null);
       if (panel) setLivePanel(panel as any);
       else if (panelFromStatus) setLivePanel(panelFromStatus as any);
+      try {
+        const odds = await fetchMlbMoneylineOdds(day);
+        if (!cancelled && odds.length) setMarketLines(odds);
+      } catch {}
+      // phase from first pred
+      if (preds && preds[0] && (preds[0] as any).season_phase) {
+        setSeasonPhase(String((preds[0] as any).season_phase));
+      } else {
+        const d = new Date();
+        const m = d.getMonth() + 1;
+        const dayN = d.getDate();
+        if (m >= 10 || (m === 9 && dayN >= 28)) setSeasonPhase('postseason_window');
+        else if (m === 9 && dayN >= 15) setSeasonPhase('stretch_run');
+        else setSeasonPhase('regular');
+      }
+      // auto-grade parlays from history winners
+      try {
+        const hist = await fetchLiveHistory(500);
+        if (hist && !cancelled) {
+          const winners: Record<number, string> = {};
+          for (const h of hist) {
+            if (h.isGraded && h.home && h.away) {
+              // winner from scores if available
+              if (h.home_score != null && h.away_score != null) {
+                winners[h.game_pk] = Number(h.home_score) > Number(h.away_score) ? h.home : h.away;
+              }
+            }
+          }
+          if (Object.keys(winners).length) {
+            setParlayHistory((prev) => {
+              const next = autoGradeParlays(prev, winners);
+              try {
+                localStorage.setItem('kal_parlay_history', JSON.stringify(next));
+              } catch {}
+              return next;
+            });
+          }
+        }
+      } catch {}
+
     };
     load();
     const id = setInterval(load, 180000);
@@ -74,26 +139,6 @@ export default function App() {
       clearInterval(id);
     };
   }, [activeDate]);
-
-    const [parlayHistory, setParlayHistory] = useState<KalParlaySlip[]>(() => {
-    try {
-      const raw = localStorage.getItem('kal_parlay_history');
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  });
-  const lockParlaySlip = (slip: KalParlaySlip) => {
-    setParlayHistory((prev) => {
-      const next = [...prev.filter((s) => s.id !== slip.id), slip];
-      try {
-        localStorage.setItem('kal_parlay_history', JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-    setPipelineToast('Parlay de 4 bloqueado (inmutable)');
-    setTimeout(() => setPipelineToast(null), 3000);
-  };
 
   const todayIso = new Date().toISOString().slice(0, 10);
   const availableDates = Array.from(
@@ -215,6 +260,14 @@ export default function App() {
               {' '}{liveNote}
               {!liveMode && ' — Despliega el API en Railway y define VITE_KAL_API_URL para autonomía total.'}
             </div>
+            {(seasonPhase === 'postseason_window' || seasonPhase === 'stretch_run') && (
+              <div className="rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-2.5 text-[11px] text-violet-100">
+                <strong>
+                  {seasonPhase === 'postseason_window' ? 'Ventana postseason' : 'Tramo final de temporada'}
+                </strong>
+                {' '}— mayor incertidumbre (bullpens, rosters). Prefiere picks HIGH y respeta NO JUGAR en parlays.
+              </div>
+            )}
             {/* Filter controls */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
@@ -258,6 +311,13 @@ export default function App() {
                     key={pred.game_pk}
                     prediction={pred}
                     onSelect={setSelectedPrediction}
+                    marketLine={findMarketLine(
+                      marketLines,
+                      pred.home,
+                      pred.away,
+                      TEAMS_META[pred.home]?.name,
+                      TEAMS_META[pred.away]?.name
+                    )}
                   />
                 ))}
               </div>

@@ -338,6 +338,42 @@ def api_backfill(
     return report
 
 
+
+@app.get("/api/odds")
+def api_odds():
+    """Proxy opcional The Odds API (ODDS_API_KEY en Railway)."""
+    key = os.environ.get("ODDS_API_KEY") or os.environ.get("THE_ODDS_API_KEY") or ""
+    if not key:
+        return {"configured": False, "lines": [], "note": "Define ODDS_API_KEY en Railway o VITE_ODDS_API_KEY en Vercel"}
+    try:
+        import requests
+        url = (
+            "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/"
+            f"?apiKey={key}&regions=us&markets=h2h&oddsFormat=decimal"
+        )
+        r = requests.get(url, timeout=20)
+        r.raise_for_status()
+        data = r.json()
+        lines = []
+        for g in data if isinstance(data, list) else []:
+            book = (g.get("bookmakers") or [{}])[0]
+            market = next((m for m in (book.get("markets") or []) if m.get("key") == "h2h"), None)
+            outcomes = (market or {}).get("outcomes") or []
+            home, away = g.get("home_team"), g.get("away_team")
+            ho = next((o for o in outcomes if o.get("name") == home), None)
+            ao = next((o for o in outcomes if o.get("name") == away), None)
+            lines.append({
+                "home": home,
+                "away": away,
+                "home_decimal": (ho or {}).get("price"),
+                "away_decimal": (ao or {}).get("price"),
+                "book": book.get("title"),
+            })
+        return {"configured": True, "count": len(lines), "lines": lines}
+    except Exception as e:
+        return {"configured": True, "error": str(e), "lines": []}
+
+
 @app.get("/api/preds")
 def preds(date_str: str | None = Query(None, alias="date")):
     day = date_str or date.today().isoformat()

@@ -475,6 +475,21 @@ def predict_games(
     out["predicted_at"] = datetime.utcnow().isoformat()
     out["model_version"] = str(model_art.get("train_seasons", "unknown"))
     out["prediction_id"] = [str(uuid4()) for _ in range(len(out))]
+    try:
+        from src.models.retrain import detect_season_phase
+        phase = detect_season_phase()
+    except Exception:
+        phase = "regular"
+    out["season_phase"] = phase
+    if phase in ("stretch_run", "postseason_window"):
+        out["home_win_prob"] = out["home_win_prob"].clip(0.08, 0.92)
+        out["away_win_prob"] = 1.0 - out["home_win_prob"]
+        out["predicted_winner"] = np.where(
+            out["home_win_prob"] >= 0.5, out["home_team_abbr"], out["away_team_abbr"]
+        )
+        out["confidence"] = [
+            confidence_label(float(x), high_t, med_t) for x in out["home_win_prob"]
+        ]
 
     return out.sort_values("game_date").reset_index(drop=True)
 

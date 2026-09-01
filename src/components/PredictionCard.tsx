@@ -28,6 +28,16 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
         ? 'Edge moderado'
         : 'Edge fuerte';
 
+  const dqScore = typeof (p as any).data_quality_score === 'number' ? (p as any).data_quality_score : null;
+  const dqLabel =
+    dqScore == null
+      ? null
+      : dqScore >= 5
+        ? 'Datos OK'
+        : dqScore >= 3
+          ? 'Datos parciales'
+          : 'Datos incompletos';
+
   // Pitcher vs Opponent Team Analysis
   const awayPitcherVsHome = generatePitcherVsTeamStats(p.away_sp, p.home, false);
   const homePitcherVsAway = generatePitcherVsTeamStats(p.home_sp, p.away, true);
@@ -143,7 +153,7 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
           <span className="font-mono text-[11px] text-neutral-200">{fairLine}</span>
         </div>
         <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {isHighConfidence ? (
               <span className="text-[11px] text-emerald-400 font-medium">Alta probabilidad</span>
             ) : (
@@ -152,6 +162,19 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
               </span>
             )}
             <span className="text-[10px] text-neutral-600">{p.conf}</span>
+            {dqLabel && (
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded ${
+                  dqScore! >= 5
+                    ? 'text-emerald-400/90 bg-emerald-500/10'
+                    : dqScore! >= 3
+                      ? 'text-amber-400/90 bg-amber-500/10'
+                      : 'text-rose-400/90 bg-rose-500/10'
+                }`}
+              >
+                {dqLabel}
+              </span>
+            )}
           </div>
           <span className="text-xs font-medium text-neutral-400 group-hover:text-white flex items-center gap-1 transition-colors">
             Detalles

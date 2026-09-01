@@ -14,6 +14,7 @@ import { ModelTrainerLab } from './ModelTrainerLab';
 import { FeatureImportanceView } from './FeatureImportanceView';
 import { DatasetSplitsView } from './DatasetSplitsView';
 import { TabIntro } from './TabIntro';
+import { LearningStatusPanel } from './LearningStatusPanel';
 
 interface LabAndValidationHubProps {
   champion: ChampionModel;
@@ -24,6 +25,7 @@ export const LabAndValidationHub: React.FC<LabAndValidationHubProps> = ({ champi
 
   return (
     <div className="space-y-4 font-mono">
+      <LearningStatusPanel />
       <TabIntro
         title="Laboratorio — ¿qué es esto?"
         bullets={[

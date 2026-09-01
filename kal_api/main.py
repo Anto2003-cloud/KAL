@@ -298,6 +298,19 @@ def metrics_detail():
     }
 
 
+
+@app.post("/api/run/retrain")
+def api_retrain(x_kal_secret: str | None = Header(None), force: bool = Query(False)):
+    """Lanza gate de retrain (solo promociona si gana al campeón)."""
+    _check_secret(x_kal_secret)
+    try:
+        from src.models.retrain import maybe_retrain
+        report = maybe_retrain(force=force)
+        return {"ok": True, "report": report}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 @app.post("/api/run/backfill")
 def api_backfill(
     days: int = Query(3, ge=1, le=14),

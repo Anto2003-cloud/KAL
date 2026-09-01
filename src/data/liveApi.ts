@@ -49,6 +49,7 @@ export function mapApiPrediction(row: any): any {
     away_starter_era: row.away_starter_era,
     data_quality_score: row.data_quality_score,
     data_quality: row.data_quality,
+    season_phase: row.season_phase,
   };
 }
 
@@ -214,6 +215,28 @@ export async function fetchLiveHistory(limit = 500): Promise<ReturnType<typeof n
     const items = j.items || j.predictions || [];
     if (!Array.isArray(items)) return null;
     return items.map(normalizeHistoryItem);
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchRetrainStatus(): Promise<any | null> {
+  if (!API_BASE) return null;
+  try {
+    const r = await fetch(`${API_BASE}/api/retrain/status`, { cache: 'no-store' });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchMetrics(): Promise<any | null> {
+  if (!API_BASE) return null;
+  try {
+    const r = await fetch(`${API_BASE}/api/metrics`, { cache: 'no-store' });
+    if (!r.ok) return null;
+    return await r.json();
   } catch {
     return null;
   }

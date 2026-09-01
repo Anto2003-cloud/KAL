@@ -149,7 +149,11 @@ export interface GamePrediction {
   };
   sha256_hash?: string;
   locked_at?: string;
+  data_quality_score?: number;
+  data_quality?: string | Record<string, string | number>;
+  season_phase?: string;
 }
+
 
 export interface ModelBenchmark {
   id: string;

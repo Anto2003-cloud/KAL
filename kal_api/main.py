@@ -273,6 +273,58 @@ def status():
     }
 
 
+
+@app.get("/api/metrics")
+def metrics_detail():
+    """Desglose de acierto por confianza + umbral de retrain."""
+    panel = _load_panel()
+    high_t, med_t = 0.60, 0.55
+    try:
+        import sys
+        sys.path.insert(0, str(KAL))
+        from src.models.predict import _empirical_thresholds
+        high_t, med_t = _empirical_thresholds()
+    except Exception:
+        pass
+    return {
+        "panel": panel,
+        "confidence_thresholds": {"HIGH": high_t, "MEDIUM": med_t},
+        "retrain": {
+            "min_graded": 50,
+            "n_graded": panel.get("n_graded", 0),
+            "ready": int(panel.get("n_graded") or 0) >= 50,
+        },
+        "by_confidence": panel.get("by_confidence") or {},
+    }
+
+
+@app.post("/api/run/backfill")
+def api_backfill(
+    days: int = Query(3, ge=1, le=14),
+    x_kal_secret: str | None = Header(None),
+):
+    """Re-predice y califica los últimos N días (rellena huecos)."""
+    _check_secret(x_kal_secret)
+    from datetime import timedelta
+    report = {"days": [], "ok": True}
+    try:
+        from src.models.predict import predict_date
+        from src.tracking.panel import update_tracking
+        today = date.today()
+        for i in range(days, 0, -1):
+            d = today - timedelta(days=i)
+            try:
+                df = predict_date(d, save=True)
+                report["days"].append({"date": d.isoformat(), "n": 0 if df is None else len(df)})
+            except Exception as e:
+                report["days"].append({"date": d.isoformat(), "error": str(e)})
+        report["panel"] = update_tracking()
+    except Exception as e:
+        report["ok"] = False
+        report["error"] = str(e)
+    return report
+
+
 @app.get("/api/preds")
 def preds(date_str: str | None = Query(None, alias="date")):
     day = date_str or date.today().isoformat()

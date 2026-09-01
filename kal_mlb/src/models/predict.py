@@ -206,13 +206,72 @@ def build_features_for_upcoming(games: pd.DataFrame) -> pd.DataFrame:
     return base
 
 
-def confidence_label(prob: float) -> str:
+def _empirical_thresholds() -> tuple[float, float]:
+    """Umbrales HIGH/MEDIUM desde graded reales si hay suficientes; si no, defaults calibrados."""
+    high_t, med_t = 0.60, 0.55
+    try:
+        gpath = PROJECT_ROOT / "data" / "results" / "graded_predictions.feather"
+        if not gpath.exists():
+            gpath = PROJECT_ROOT / "data" / "results" / "graded_predictions.csv"
+        if not gpath.exists():
+            return high_t, med_t
+        g = pd.read_feather(gpath) if str(gpath).endswith(".feather") else pd.read_csv(gpath)
+        g = g[g.get("graded", True) == True] if "graded" in g.columns else g
+        if len(g) < 30 or "home_win_prob" not in g.columns or "correct" not in g.columns:
+            return high_t, med_t
+        edge = g["home_win_prob"].clip(0, 1)
+        edge = edge.where(edge >= 0.5, 1 - edge)
+        # buscar corte donde acc >= 0.58 para HIGH
+        for thr in (0.65, 0.62, 0.60, 0.58):
+            sub = g[edge >= thr]
+            if len(sub) >= 8 and float(sub["correct"].mean()) >= 0.55:
+                high_t = thr
+                break
+        for thr in (0.56, 0.55, 0.53):
+            sub = g[edge >= thr]
+            if len(sub) >= 10:
+                med_t = min(thr, high_t - 0.03)
+                break
+    except Exception as e:
+        logger.debug("empirical thresholds: %s", e)
+    return high_t, med_t
+
+
+def confidence_label(prob: float, high_t: float | None = None, med_t: float | None = None) -> str:
     conf = max(prob, 1 - prob)
-    if conf >= 0.62:
+    if high_t is None or med_t is None:
+        high_t, med_t = _empirical_thresholds()
+    if conf >= high_t:
         return "HIGH"
-    if conf >= 0.55:
+    if conf >= med_t:
         return "MEDIUM"
     return "LOW"
+
+
+def data_quality_flags(row: pd.Series) -> dict:
+    """Qué datos reales vs faltantes para este partido."""
+    flags = {}
+    # lineups
+    for side in ("home", "away"):
+        key = f"{side}_lineup_names"
+        val = row.get(key)
+        missing = val is None or (isinstance(val, float) and pd.isna(val)) or str(val) in ("", "nan", "None", "[]")
+        flags[f"lineup_{side}"] = "missing" if missing else "ok"
+    for col, name in [
+        ("il_short_diff", "il"),
+        ("bullpen_era_diff", "bullpen"),
+        ("park_factor", "park"),
+        ("home_starter_name", "starter_home"),
+        ("away_starter_name", "starter_away"),
+    ]:
+        v = row.get(col)
+        if col.endswith("_name"):
+            flags[name] = "missing" if not v or str(v) in ("nan", "None", "TBD", "") else "ok"
+        else:
+            flags[name] = "missing" if v is None or (isinstance(v, float) and pd.isna(v)) else "ok"
+    flags["score"] = sum(1 for v in flags.values() if v == "ok")
+    flags["max"] = len(flags) - 1  # exclude score
+    return flags
 
 
 def _fmt_lineup(names) -> str:
@@ -404,10 +463,15 @@ def predict_games(
     out["predicted_winner"] = np.where(
         out["home_win_prob"] >= 0.5, out["home_team_abbr"], out["away_team_abbr"]
     )
-    out["confidence"] = [confidence_label(p) for p in proba]
+    high_t, med_t = _empirical_thresholds()
+    logger.info("Confidence thresholds HIGH>=%.2f MEDIUM>=%.2f", high_t, med_t)
+    out["confidence"] = [confidence_label(p, high_t, med_t) for p in proba]
     out["explanation"] = [
         make_explanation(feat_df.iloc[i], proba[i]) for i in range(len(feat_df))
     ]
+    dq = [data_quality_flags(feat_df.iloc[i]) for i in range(len(feat_df))]
+    out["data_quality_score"] = [d.get("score", 0) for d in dq]
+    out["data_quality"] = [str(d) for d in dq]
     out["predicted_at"] = datetime.utcnow().isoformat()
     out["model_version"] = str(model_art.get("train_seasons", "unknown"))
     out["prediction_id"] = [str(uuid4()) for _ in range(len(out))]
@@ -434,11 +498,19 @@ def predict_date(target: date | str, save: bool = True) -> pd.DataFrame:
 
     if save and not preds.empty:
         path = PREDS / f"preds_{target.isoformat()}.feather"
-        preds.to_feather(path)
-        # also a readable csv
+        try:
+            preds.to_feather(path)
+        except Exception as e:
+            logger.warning("feather save: %s", e)
         csv_path = PREDS / f"preds_{target.isoformat()}.csv"
         preds.drop(columns=["explanation"], errors="ignore").to_csv(csv_path, index=False)
-        logger.info("Saved → %s", path)
+        # JSON for API frontend
+        try:
+            jpath = PREDS / f"preds_{target.isoformat()}.json"
+            jpath.write_text(preds.to_json(orient="records", date_format="iso"), encoding="utf-8")
+        except Exception as e:
+            logger.warning("json save: %s", e)
+        logger.info("Saved → %s (+ csv/json)", path)
 
     return preds
 
@@ -470,7 +542,6 @@ if __name__ == "__main__":
         format="%(asctime)s | %(levelname)-7s | %(message)s",
         datefmt="%H:%M:%S",
     )
-    # Predict for 2026-08-30 (tomorrow / current slate)
-    target = date(2026, 8, 30)
+    target = date.today()
     preds = predict_date(target, save=True)
     print_predictions(preds)

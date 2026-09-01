@@ -47,6 +47,8 @@ export function mapApiPrediction(row: any): any {
     prediction_id: row.prediction_id,
     home_starter_era: row.home_starter_era,
     away_starter_era: row.away_starter_era,
+    data_quality_score: row.data_quality_score,
+    data_quality: row.data_quality,
   };
 }
 

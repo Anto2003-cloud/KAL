@@ -76,6 +76,14 @@ export const LearningStatusPanel: React.FC = () => {
         Al llegar a {minG} graded, el ciclo puede promocionar un modelo nuevo solo si gana al campeón en datos
         nuevos. POST /api/run/retrain con secreto.
       </p>
+      <a
+        className="inline-block text-[11px] text-neutral-300 underline underline-offset-2 hover:text-white"
+        href="https://kal-production-ae77.up.railway.app/api/backup"
+        target="_blank"
+        rel="noreferrer"
+      >
+        Descargar backup JSON (panel + historial)
+      </a>
     </div>
   );
 };

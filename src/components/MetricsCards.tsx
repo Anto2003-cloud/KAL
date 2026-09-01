@@ -16,79 +16,65 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({ panel, champion }) =
       ? panel.record.replace('-', ' - ')
       : `${hits} - ${misses}`;
   const units = panel.units_flat ?? 0;
-  const highAcc = panel.by_confidence?.HIGH?.acc;
-  const strongPct =
-    highAcc != null
-      ? (highAcc * 100).toFixed(0)
-      : champion?.metrics?.acc_conf_65plus != null
-        ? (champion.metrics.acc_conf_65plus * 100).toFixed(0)
-        : '—';
+
+  const high = panel.by_confidence?.HIGH || (panel as any).high_only;
+  const med = panel.by_confidence?.MEDIUM || (panel as any).medium_only;
+  const low = panel.by_confidence?.LOW || (panel as any).low_only;
+
+  const highLabel =
+    high && high.n
+      ? `${high.hits}-${high.n - high.hits} (${((high.acc || 0) * 100).toFixed(0)}%)`
+      : 'Sin HIGH aún';
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-      <div className="bg-[#18181b] border border-white/[0.06] rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
-        <span className="text-xs font-medium text-neutral-400">Récord Verificado</span>
-        <div className="mt-2">
-          <div className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">
-            {record}
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-[#18181b] border border-white/[0.06] rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
+          <span className="text-xs font-medium text-neutral-400">Overall (todos)</span>
+          <div className="mt-2">
+            <div className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">{record}</div>
+            <span className={`text-xs font-medium mt-0.5 block ${acc >= 0.55 ? 'text-emerald-400' : 'text-neutral-400'}`}>
+              {graded > 0 ? `${(acc * 100).toFixed(1)}% · ${graded} graded` : 'Sin graded'}
+            </span>
           </div>
-          <span
-            className={`text-xs font-medium mt-0.5 block ${
-              acc >= 0.55 ? 'text-emerald-400' : 'text-neutral-400'
-            }`}
-          >
-            {graded > 0 ? `${(acc * 100).toFixed(1)}% efectividad · ${graded} graded` : 'Sin graded aún'}
-          </span>
+        </div>
+
+        <div className="bg-[#18181b] border border-white/[0.06] rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
+          <span className="text-xs font-medium text-neutral-400">Solo HIGH</span>
+          <div className="mt-2">
+            <div className="text-xl sm:text-2xl font-semibold tracking-tight text-white">{highLabel}</div>
+            <span className="text-xs text-neutral-500 mt-0.5 block">
+              MED {med?.n ? `${med.hits}/${med.n}` : '—'} · LOW {low?.n ? `${low.hits}/${low.n}` : '—'}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-[#18181b] border border-white/[0.06] rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
+          <span className="text-xs font-medium text-neutral-400">Unidades (flat 1u)</span>
+          <div className="mt-2">
+            <div className={`text-2xl sm:text-3xl font-semibold tracking-tight ${units >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {units >= 0 ? '+' : ''}
+              {units.toFixed(1)}u
+            </div>
+            <span className="text-xs text-neutral-500 mt-0.5 block">
+              {panel.n_pending != null ? `${panel.n_pending} pendientes` : 'simulación'}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-[#18181b] border border-white/[0.06] rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
+          <span className="text-xs font-medium text-neutral-400">Modelo</span>
+          <div className="mt-2">
+            <div className="text-xl sm:text-2xl font-semibold tracking-tight text-white truncate">LightGBM</div>
+            <span className="text-xs text-neutral-500 mt-0.5 block">
+              Panel vivo · {graded} calificados
+            </span>
+          </div>
         </div>
       </div>
-
-      <div className="bg-[#18181b] border border-white/[0.06] rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
-        <span className="text-xs font-medium text-neutral-400">Ganancia Acumulada</span>
-        <div className="mt-2">
-          <div
-            className={`text-2xl sm:text-3xl font-semibold tracking-tight ${
-              units >= 0 ? 'text-emerald-400' : 'text-rose-400'
-            }`}
-          >
-            {units >= 0 ? '+' : ''}
-            {units.toFixed(1)}u
-          </div>
-          <span className="text-xs text-neutral-400 mt-0.5 block">
-            {panel.n_pending != null ? `${panel.n_pending} pendientes` : 'flat 1u'}
-          </span>
-        </div>
-      </div>
-
-      <div className="bg-[#18181b] border border-white/[0.06] rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
-        <span className="text-xs font-medium text-neutral-400">Picks Fuertes (&gt;65%)</span>
-        <div className="mt-2">
-          <div className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">
-            {strongPct}%
-          </div>
-          <span className="text-xs text-neutral-400 mt-0.5 block">
-            {panel.by_confidence?.HIGH
-              ? `HIGH ${panel.by_confidence.HIGH.hits}/${panel.by_confidence.HIGH.n}`
-              : 'Acierto histórico'}
-          </span>
-        </div>
-      </div>
-
-      <div className="bg-[#18181b] border border-white/[0.06] rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
-        <span className="text-xs font-medium text-neutral-400">Modelo Activo</span>
-        <div className="mt-2">
-          <div className="text-xl sm:text-2xl font-semibold tracking-tight text-white truncate">
-            LightGBM
-          </div>
-          <span className="text-xs text-neutral-400 mt-0.5 block">
-            Panel en vivo · {graded} calificados
-          </span>
-        </div>
-      </div>
-
-      <p className="col-span-full text-[10px] text-neutral-600 mt-1 sm:col-span-4">
-        Récord = partidos graded del API (Railway).
-        {panel.updated_at ? ` Actualizado: ${String(panel.updated_at).slice(0, 19)}` : ''}
-        {' '}· Parlays en Parlay 4.
+      <p className="text-[10px] text-neutral-600">
+        Overall ≠ solo HIGH. Parlay 4 se mide aparte en su pestaña.
+        {panel.updated_at ? ` · Actualizado ${String(panel.updated_at).slice(0, 19)}` : ''}
       </p>
     </div>
   );

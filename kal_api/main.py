@@ -206,6 +206,23 @@ def run_cycle() -> dict:
             # re-grade and refresh panel json for frontend
             from src.tracking.panel import update_tracking
             report["panel_refresh"] = update_tracking()
+            # alertas HIGH
+            try:
+                preds_n = report.get("n_preds") or 0
+                # load today preds for HIGH count
+                from src.models.predict import predict_date
+                # already predicted in cycle; count from files
+                highs = []
+                for jf in sorted(PRED_DIR.glob("preds_*.json"))[-3:]:
+                    import json as _json
+                    for row in _json.loads(jf.read_text(encoding="utf-8")):
+                        if str(row.get("confidence", "")).upper() == "HIGH":
+                            highs.append(f"{row.get('away_team_abbr')}@{row.get('home_team_abbr')} → {row.get('predicted_winner')}")
+                if highs:
+                    report["telegram"] = _send_telegram("KAL HIGH hoy:\n" + "\n".join(highs[:12]))
+            except Exception as te:
+                report["telegram_error"] = str(te)
+
         except Exception as ex:
             report["panel_refresh_error"] = str(ex)
         _state["last_cycle_at"] = datetime.now(timezone.utc).isoformat()
@@ -372,6 +389,46 @@ def api_odds():
         return {"configured": True, "count": len(lines), "lines": lines}
     except Exception as e:
         return {"configured": True, "error": str(e), "lines": []}
+
+
+
+@app.get("/api/backup")
+def api_backup():
+    """JSON descargable: panel + graded (para no perder historial)."""
+    panel = _load_panel()
+    try:
+        rows = _load_history()
+    except Exception:
+        rows = []
+    return {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "panel": panel,
+        "history_count": len(rows),
+        "history": rows[:2000],
+    }
+
+
+@app.post("/api/notify/test")
+def api_notify_test(x_kal_secret: str | None = Header(None)):
+    _check_secret(x_kal_secret)
+    return _send_telegram("KAL test: alertas OK")
+
+
+def _send_telegram(text: str) -> dict:
+    token = os.environ.get("TELEGRAM_BOT_TOKEN") or ""
+    chat = os.environ.get("TELEGRAM_CHAT_ID") or ""
+    if not token or not chat:
+        return {"sent": False, "reason": "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID no configurados"}
+    try:
+        import requests
+        r = requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": chat, "text": text[:3500]},
+            timeout=15,
+        )
+        return {"sent": r.ok, "status": r.status_code}
+    except Exception as e:
+        return {"sent": False, "error": str(e)}
 
 
 @app.get("/api/preds")

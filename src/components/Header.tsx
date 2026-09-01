@@ -47,9 +47,9 @@ export const Header: React.FC<HeaderProps> = ({
             {[
               { id: 'preds', label: 'Pronósticos' },
               { id: 'parlay', label: 'Parlay 4' },
-              { id: 'pillars', label: 'Modelo (9 Factores)' },
+              { id: 'pillars', label: 'Factores' },
               { id: 'history', label: 'Historial' },
-              { id: 'lab', label: 'Laboratorio' },
+              { id: 'lab', label: 'Aprende' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -99,9 +99,9 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex md:hidden overflow-x-auto pb-3 gap-1.5 scrollbar-none">
           {[
             { id: 'preds', label: 'Pronósticos' },
-            { id: 'pillars', label: 'Modelo' },
+            { id: 'pillars', label: 'Factores' },
             { id: 'history', label: 'Historial' },
-            { id: 'lab', label: 'Laboratorio' },
+            { id: 'lab', label: 'Aprende' },
           ].map((tab) => (
             <button
               key={tab.id}

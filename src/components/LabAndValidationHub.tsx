@@ -1,108 +1,103 @@
 import React, { useState } from 'react';
-import {
-  Trophy,
-  Cpu,
-  BarChart3,
-  Layers,
-  Sliders,
-  Sparkles,
-  Info
-} from 'lucide-react';
 import { ChampionModel } from '../types';
 import { ChampionPanel } from './ChampionPanel';
-import { ModelTrainerLab } from './ModelTrainerLab';
 import { FeatureImportanceView } from './FeatureImportanceView';
-import { DatasetSplitsView } from './DatasetSplitsView';
-import { TabIntro } from './TabIntro';
 import { LearningStatusPanel } from './LearningStatusPanel';
+import { TabIntro } from './TabIntro';
 
 interface LabAndValidationHubProps {
   champion: ChampionModel;
 }
 
+type Sub = 'learn' | 'champion' | 'features';
+
 export const LabAndValidationHub: React.FC<LabAndValidationHubProps> = ({ champion }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'champion' | 'trainer' | 'features' | 'splits'>('champion');
+  const [tab, setTab] = useState<Sub>('learn');
+
+  const tabs: { id: Sub; label: string }[] = [
+    { id: 'learn', label: 'Cómo aprende' },
+    { id: 'champion', label: 'Modelo activo' },
+    { id: 'features', label: 'Qué variables usa' },
+  ];
 
   return (
-    <div className="space-y-4 font-mono">
-      <LearningStatusPanel />
+    <div className="space-y-6">
       <TabIntro
-        title="Laboratorio — ¿qué es esto?"
-        bullets={[
-          "Zona técnica: cómo se entrenó el modelo y con qué datos (no es para apostar el día a día).",
-          "Modelo Campeón: la versión que hoy genera los % de los pronósticos.",
-          "Entrenador / Features / Splits: métricas internas (acierto en test, importancia de variables, train vs test).",
-          "Úsalo para entender el sistema; las apuestas salen de la pestaña Pronósticos y Parlay 4.",
-        ]}
-        warning="Números de laboratorio (AUC, log-loss, 2084 partidos) no son el mismo que el récord 5-0 del panel en vivo."
+        title="Laboratorio"
+        subtitle="Aquí no se apuesta. Ves si el modelo puede mejorar, qué versión está activa y qué señales mira. El dinero se gestiona en Pronósticos y Parlay 4."
+        bullets={['Graded → feedback', 'Retrain solo si gana al campeón', 'Umbrales HIGH reales']}
       />
 
-      {/* Subnavigation Bar */}
-      <div className="bg-[#0e1017] border border-white/[0.08] rounded-2xl p-2 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 shadow-xs">
-        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-neutral-950 rounded-xl border border-white/[0.06] text-xs">
-          
+      <div className="flex flex-wrap gap-2">
+        {tabs.map((t) => (
           <button
-            onClick={() => setActiveSubTab('champion')}
-            className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 transition-all ${
-              activeSubTab === 'champion'
-                ? 'bg-neutral-800 text-white shadow-xs border border-white/[0.14]'
-                : 'text-neutral-400 hover:text-neutral-200'
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`px-3 py-1.5 rounded-full text-xs transition-colors ${
+              tab === t.id
+                ? 'bg-white text-black font-semibold'
+                : 'bg-white/[0.04] text-neutral-400 border border-white/[0.06] hover:text-white'
             }`}
           >
-            <Trophy className="w-3.5 h-3.5 text-neutral-300" />
-            <span>1. Modelo Campeón</span>
+            {t.label}
           </button>
-
-          <button
-            onClick={() => setActiveSubTab('trainer')}
-            className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 transition-all ${
-              activeSubTab === 'trainer'
-                ? 'bg-neutral-800 text-white shadow-xs border border-white/[0.14]'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5 text-neutral-300" />
-            <span>2. Entrenar y Comparar</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('features')}
-            className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 transition-all ${
-              activeSubTab === 'features'
-                ? 'bg-neutral-800 text-white shadow-xs border border-white/[0.14]'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5 text-neutral-300" />
-            <span>3. 24 Variables Explicadas</span>
-          </button>
-
-          <button
-            onClick={() => setActiveSubTab('splits')}
-            className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 transition-all ${
-              activeSubTab === 'splits'
-                ? 'bg-neutral-800 text-white shadow-xs border border-white/[0.14]'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5 text-neutral-300" />
-            <span>4. Validación 2024-2026</span>
-          </button>
-
-        </div>
-
-        <div className="text-[11px] text-neutral-400 px-3 py-1 bg-neutral-950 rounded-xl border border-white/[0.06] flex items-center gap-2 self-start md:self-center font-sans">
-          <Info className="w-3.5 h-3.5 text-neutral-300 shrink-0" />
-          <span>Área científica para evaluar el algoritmo y sus métricas.</span>
-        </div>
+        ))}
       </div>
 
-      {/* Render Selected View */}
-      {activeSubTab === 'champion' && <ChampionPanel champion={champion} />}
-      {activeSubTab === 'trainer' && <ModelTrainerLab />}
-      {activeSubTab === 'features' && <FeatureImportanceView />}
-      {activeSubTab === 'splits' && <DatasetSplitsView />}
+      {tab === 'learn' && (
+        <div className="space-y-4">
+          <LearningStatusPanel />
+          <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-white">Ciclo de mejora</h3>
+            <ol className="space-y-3 text-xs text-neutral-400">
+              <li className="flex gap-3">
+                <span className="text-neutral-600 font-mono w-5">1</span>
+                <span>
+                  <strong className="text-neutral-200">Predice</strong> el día (API Railway) y guarda el slip
+                  inmutable.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-neutral-600 font-mono w-5">2</span>
+                <span>
+                  <strong className="text-neutral-200">Califica</strong> con el marcador real → HIT / MISS en
+                  Historial.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-neutral-600 font-mono w-5">3</span>
+                <span>
+                  Ajusta <strong className="text-neutral-200">umbrales HIGH/MEDIUM</strong> según acierto real.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <span className="text-neutral-600 font-mono w-5">4</span>
+                <span>
+                  Con suficientes graded, intenta <strong className="text-neutral-200">retrain</strong>; solo
+                  promociona si el candidato es mejor que el campeón.
+                </span>
+              </li>
+            </ol>
+            <p className="text-[11px] text-neutral-600 border-t border-white/[0.04] pt-3">
+              Mientras graded &lt; 50, el aprendizaje es sobre todo calibración y acumular historial — no un modelo
+              nuevo cada noche.
+            </p>
+          </div>
+        </div>
+      )}
 
+      {tab === 'champion' && (
+        <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-4 overflow-hidden">
+          <ChampionPanel champion={champion} />
+        </div>
+      )}
+
+      {tab === 'features' && (
+        <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-4 overflow-hidden">
+          <FeatureImportanceView />
+        </div>
+      )}
     </div>
   );
 };

@@ -1,15 +1,5 @@
 import React, { useState } from 'react';
-import {
-  TrendingUp,
-  ShieldCheck,
-  CheckCircle2,
-  DollarSign,
-  Brain,
-  History,
-  Activity
-} from 'lucide-react';
 import { TrackingPanelData } from '../types';
-import { ActiveLearningView } from './ActiveLearningView';
 import { TrackingAuditView } from './TrackingAuditView';
 import { TabIntro } from './TabIntro';
 
@@ -18,59 +8,63 @@ interface BankrollAndAuditHubProps {
 }
 
 export const BankrollAndAuditHub: React.FC<BankrollAndAuditHubProps> = ({ panel }) => {
-  const [subTab, setSubTab] = useState<'balance' | 'ledger'>('balance');
+  const [tab, setTab] = useState<'ledger' | 'about'>('ledger');
 
   return (
-    <div className="space-y-4 font-mono">
+    <div className="space-y-6">
       <TabIntro
-        title="Historial — ¿qué es esto?"
+        title="Historial"
+        subtitle="Partidos que KAL ya predijo y se calificaron con el resultado real. Es el feedback con el que el modelo mide si acierta."
         bullets={[
-          "Ledger en vivo: todos los picks del API (HIT / MISS / pendientes).",
-          "Filtros: aciertos, fallos o pendientes.",
-          "Unidades = simulación flat ±1u por partido calificado (no es tu casa de apuestas).",
-          "La pestaña Balance puede seguir teniendo vistas demo; el Ledger usa Railway.",
+          `Récord ${panel.record || '—'}`,
+          `${panel.n_graded ?? 0} graded`,
+          `${panel.n_pending ?? 0} pendientes`,
         ]}
-        warning="Si el ledger sale vacío, espera un ciclo del API o abre /api/history en Railway."
       />
 
-      {/* Subnavigation Bar */}
-      <div className="bg-[#0e1017] border border-white/[0.08] rounded-2xl p-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shadow-xs">
-        <div className="flex items-center gap-1.5 p-1 bg-neutral-950 rounded-xl border border-white/[0.06] text-xs">
-          <button
-            onClick={() => setSubTab('balance')}
-            className={`px-3.5 py-1.5 rounded-lg font-bold flex items-center gap-2 transition-all ${
-              subTab === 'balance'
-                ? 'bg-neutral-800 text-emerald-300 shadow-xs border border-emerald-500/30'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-            <span>1. Balance (simulado)</span>
-          </button>
-
-          <button
-            onClick={() => setSubTab('ledger')}
-            className={`px-3.5 py-1.5 rounded-lg font-bold flex items-center gap-2 transition-all ${
-              subTab === 'ledger'
-                ? 'bg-neutral-800 text-white shadow-xs border border-white/[0.14]'
-                : 'text-neutral-400 hover:text-neutral-200'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-neutral-300" />
-            <span>2. Partidos Calificados (Ledger SHA-256)</span>
-          </button>
-        </div>
-
-        <div className="text-[11px] text-neutral-400 px-3 py-1 bg-neutral-950 rounded-xl border border-white/[0.06] flex items-center gap-2 self-start sm:self-center">
-          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-          <span>Récord panel: <strong>{panel.record}</strong> · {panel.n_graded} graded · muestra</span>
-        </div>
+      <div className="flex flex-wrap gap-2 items-center">
+        <button
+          type="button"
+          onClick={() => setTab('ledger')}
+          className={`px-3 py-1.5 rounded-full text-xs ${
+            tab === 'ledger'
+              ? 'bg-white text-black font-semibold'
+              : 'bg-white/[0.04] text-neutral-400 border border-white/[0.06]'
+          }`}
+        >
+          Ledger (HIT / MISS)
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('about')}
+          className={`px-3 py-1.5 rounded-full text-xs ${
+            tab === 'about'
+              ? 'bg-white text-black font-semibold'
+              : 'bg-white/[0.04] text-neutral-400 border border-white/[0.06]'
+          }`}
+        >
+          ¿Para qué sirve?
+        </button>
       </div>
 
-      {/* Render Subtab Content */}
-      {subTab === 'balance' && <ActiveLearningView />}
-      {subTab === 'ledger' && <TrackingAuditView panel={panel} />}
+      {tab === 'ledger' && <TrackingAuditView panel={panel} />}
 
+      {tab === 'about' && (
+        <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-5 space-y-3 text-xs text-neutral-400 leading-relaxed max-w-2xl">
+          <p>
+            Cada predicción se <strong className="text-neutral-200">bloquea antes del partido</strong>. Cuando hay
+            marcador, el API marca HIT o MISS. Eso alimenta el récord y, más adelante, el retrain.
+          </p>
+          <p>
+            Las <strong className="text-neutral-200">unidades</strong> son simulación flat (±1u), no el dinero de tu
+            Parlay Lab. Tu bankroll real de parlays está en la pestaña Parlay 4.
+          </p>
+          <p className="text-neutral-600">
+            Si el récord parece “bajo” (ej. solo 19 graded), es porque aún hay poca muestra en el volume — no porque
+            la web esté rota.
+          </p>
+        </div>
+      )}
     </div>
   );
 };

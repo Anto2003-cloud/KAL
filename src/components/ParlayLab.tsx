@@ -75,8 +75,9 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
   const slip = useMemo(
     () =>
       buildKalPick4(games, date, effectiveStrategy, {
-        min_leg_prob: effectiveStrategy === 'TOP4_SAFE' ? 0.53 : 0.5,
-        max_fair_american: 110,
+        min_leg_prob: effectiveStrategy === 'TOP4_SAFE' ? 0.58 : effectiveStrategy === 'TOP4_HIGH_ONLY' ? 0.55 : 0.52,
+        // negativa = solo favoritos (justa ≤ -130 en Seguro)
+        max_fair_american: effectiveStrategy === 'TOP4_SAFE' ? -130 : -110,
       }),
     [games, date, effectiveStrategy]
   );
@@ -228,10 +229,10 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
     return (
       <div className="p-8 rounded-2xl border border-white/[0.06] bg-[#18181b] text-center space-y-3">
         <p className="text-sm text-neutral-300">
-          No hay 4 piernas que pasen el filtro anti-longshot (prob ≥53% y cuota justa ≤ +110).
+          No hay 4 favoritos claros (p≥58% y cuota justa ≤ −130). Hoy no hay parlay “corto” de calidad.
         </p>
         <p className="text-xs text-neutral-500">
-          KAL evita equipos muy largos. Prueba estrategia “Top 4 por prob” o espera cartelera con más favoritos.
+          KAL ya no mete underdogs ni cuotas altas. Puedes relajar a “Top 4 prob” o pasar el día (recomendado si dice NO JUGAR).
         </p>
         <button
           type="button"
@@ -253,15 +254,15 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
         <div>
           <h2 className="text-lg font-semibold text-white">Parlay KAL · plan 10/20 + bankroll</h2>
           <p className="text-xs text-neutral-500 mt-1 max-w-xl">
-            Tu plan: <strong className="text-neutral-300">10% del bank</strong>; si pierdes, al día siguiente{' '}
-            <strong className="text-neutral-300">20% en parlay más seguro</strong>; si ganas, vuelves a 10%.
-            Cuota ref. = justa del modelo; pega la de tu casa al registrar.
+            Plan 10/20. Solo favoritos (sin cuotas altas). Cuota de casa: pégala al registrar o configura{' '}
+            <span className="text-neutral-400">ODDS_API_KEY</span>. Si hay lesión de última hora, refresca Pronósticos
+            (el ciclo Railway relee IL) y no bloquees el parlay hasta pre-game.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {(
             [
-              ['TOP4_SAFE', 'Seguro (≥53%)'],
+              ['TOP4_SAFE', 'Seguro (≥58% · ≤-130)'],
               ['TOP4_PROB', 'Top 4 prob'],
               ['TOP4_HIGH_ONLY', 'Solo MED/HIGH'],
             ] as const
@@ -420,7 +421,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
         <div className="px-4 py-3 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs text-neutral-400">
             Slip <span className="text-neutral-200 font-mono">{slip.id}</span>
-            <span className="text-neutral-600"> · anti-longshot p≥{slip.min_leg_prob} · justa≤+{slip.max_fair_american}</span>
+            <span className="text-neutral-600"> · favoritos p≥{slip.min_leg_prob} · justa≤{slip.max_fair_american} · justa≤+{slip.max_fair_american}</span>
           </div>
           <div className={`text-xs font-semibold ${honestyColor[slip.honesty_label]}`}>
             {slip.honesty_label.replace(/_/g, ' ')}

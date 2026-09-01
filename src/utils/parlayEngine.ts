@@ -152,8 +152,8 @@ export function honestyFor(p: number, legs: ParlayLeg[]): {
 
 /**
  * Anti-longshot:
- * - min_leg_prob default 0.53 (no perros largos del modelo)
- * - max_fair_american default +110 (si la justa es más positiva, se descarta)
+ * - TOP4_SAFE: solo favoritos claros (p≥58%, justa americana ≤ -130)
+ * - Nada de underdogs / cuotas altas (+money)
  */
 export function buildKalPick4(
   games: GamePrediction[],
@@ -161,30 +161,47 @@ export function buildKalPick4(
   strategy: KalParlaySlip['strategy'] = 'TOP4_SAFE',
   opts?: { min_leg_prob?: number; max_fair_american?: number }
 ): KalParlaySlip | null {
-  const minP = opts?.min_leg_prob ?? (strategy === 'TOP4_SAFE' ? 0.53 : 0.5);
-  const maxAm = opts?.max_fair_american ?? 110; // +110 máximo como “largo”
+  // max_fair_american: si es negativo, exige favorito al menos tan fuerte (ej. -130)
+  // si es positivo, permite underdogs hasta ese + (legado)
+  const minP =
+    opts?.min_leg_prob ??
+    (strategy === 'TOP4_SAFE' ? 0.58 : strategy === 'TOP4_HIGH_ONLY' ? 0.55 : 0.52);
+  const maxAm = opts?.max_fair_american ?? (strategy === 'TOP4_SAFE' ? -130 : -110);
 
   let pool = [...games];
   if (strategy === 'TOP4_HIGH_ONLY') {
     pool = pool.filter((g) => g.conf === 'HIGH' || g.conf === 'MEDIUM');
   }
 
-  pool = pool.filter((g) => {
+  const passes = (g: GamePrediction, relax: number) => {
     const p = legProb(g);
-    if (p < minP) return false;
+    if (p < minP - relax) return false;
     const am = fairAmericanNum(p);
-    // underdog with american > maxAm rejected
-    if (am > maxAm) return false;
+    // Solo favoritos: americana debe ser <= maxAm cuando maxAm es negativo (ej. -130)
+    // o <= maxAm cuando maxAm es positivo (legado +110)
+    if (maxAm <= 0) {
+      // favorito mínimo: am más negativo o igual que maxAm ( -150 <= -130 OK; -120 no)
+      if (am > maxAm) return false; // -120 > -130 → fuera
+      if (am >= 100) return false; // underdog explícito
+    } else {
+      if (am > maxAm) return false;
+    }
     return true;
-  });
+  };
+
+  pool = pool.filter((g) => passes(g, 0));
 
   if (pool.length < 4) {
-    // relax once: allow minP - 0.02
+    // un solo relajo: -0.02 en prob y 15 pts en americana
     pool = [...games].filter((g) => {
       const p = legProb(g);
       if (p < minP - 0.02) return false;
       const am = fairAmericanNum(p);
-      return am <= maxAm + 20;
+      if (maxAm <= 0) {
+        if (am > maxAm + 15) return false;
+        if (am >= 100) return false;
+      } else if (am > maxAm + 20) return false;
+      return true;
     });
   }
   if (pool.length < 4) return null;

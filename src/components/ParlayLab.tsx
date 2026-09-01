@@ -1,16 +1,25 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { GamePrediction } from '../types';
 import {
   buildKalPick4,
   computeParlayStats,
   simulateParlayVariance,
+  suggestStake,
+  defaultBankroll,
+  monthKey,
+  computePlayProfit,
   type KalParlaySlip,
+  type ParlayPlayLog,
+  type BankrollState,
 } from '../utils/parlayEngine';
+
+const LS_BANK = 'kal_parlay_bank';
+const LS_PLAYS = 'kal_parlay_plays';
+const LS_SLIPS = 'kal_parlay_history';
 
 interface Props {
   games: GamePrediction[];
   date: string;
-  /** Historial de slips ya graded (localStorage / API) */
   history?: KalParlaySlip[];
   onLockSlip?: (slip: KalParlaySlip) => void;
 }
@@ -21,11 +30,49 @@ const honestyColor = {
   COIN_FLIP_PARLAY: 'text-rose-400',
 } as const;
 
+function loadBank(): BankrollState {
+  try {
+    const raw = localStorage.getItem(LS_BANK);
+    if (!raw) return defaultBankroll();
+    const b = JSON.parse(raw) as BankrollState;
+    const mk = monthKey();
+    if (b.month_key !== mk) {
+      return {
+        ...b,
+        month_key: mk,
+        month_start_balance: b.current,
+      };
+    }
+    return b;
+  } catch {
+    return defaultBankroll();
+  }
+}
+
+function loadPlays(): ParlayPlayLog[] {
+  try {
+    return JSON.parse(localStorage.getItem(LS_PLAYS) || '[]');
+  } catch {
+    return [];
+  }
+}
+
 export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
-  const [strategy, setStrategy] = useState<'TOP4_PROB' | 'TOP4_HIGH_ONLY'>('TOP4_PROB');
+  const [strategy, setStrategy] = useState<'TOP4_SAFE' | 'TOP4_PROB' | 'TOP4_HIGH_ONLY'>(
+    'TOP4_SAFE'
+  );
+  const [bank, setBank] = useState<BankrollState>(() => loadBank());
+  const [plays, setPlays] = useState<ParlayPlayLog[]>(() => loadPlays());
+  const [stakeInput, setStakeInput] = useState('');
+  const [bookOdds, setBookOdds] = useState('');
+  const [playedToday, setPlayedToday] = useState<boolean | null>(null);
 
   const slip = useMemo(
-    () => buildKalPick4(games, date, strategy),
+    () =>
+      buildKalPick4(games, date, strategy, {
+        min_leg_prob: strategy === 'TOP4_SAFE' ? 0.53 : 0.5,
+        max_fair_american: 110,
+      }),
     [games, date, strategy]
   );
 
@@ -36,21 +83,121 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
     return simulateParlayVariance(slip.combined_prob, 10000);
   }, [slip]);
 
+  const monthPlays = useMemo(
+    () => plays.filter((p) => p.date.startsWith(bank.month_key)),
+    [plays, bank.month_key]
+  );
+
+  const monthProfit = useMemo(
+    () => monthPlays.reduce((s, p) => s + (p.profit ?? 0), 0),
+    [monthPlays]
+  );
+
+  const monthTarget = bank.month_start_balance * bank.target_month_profit_pct;
+  const monthOnTrack = monthProfit >= 0;
+
+  useEffect(() => {
+    localStorage.setItem(LS_BANK, JSON.stringify(bank));
+  }, [bank]);
+
+  useEffect(() => {
+    localStorage.setItem(LS_PLAYS, JSON.stringify(plays));
+  }, [plays]);
+
+  useEffect(() => {
+    if (!slip) return;
+    const existing = plays.find((p) => p.slip_id === slip.id);
+    if (existing) {
+      setPlayedToday(existing.played);
+      setStakeInput(String(existing.stake || ''));
+      setBookOdds(existing.book_decimal ? String(existing.book_decimal) : '');
+    } else {
+      setPlayedToday(null);
+      const sug = suggestStake(
+        bank.current,
+        slip.combined_prob,
+        undefined,
+        bank.max_stake_pct
+      );
+      setStakeInput(sug ? String(sug) : '');
+      setBookOdds('');
+    }
+  }, [slip?.id]);
+
+  const suggested = slip
+    ? suggestStake(
+        bank.current,
+        slip.combined_prob,
+        bookOdds ? parseFloat(bookOdds) : undefined,
+        bank.max_stake_pct
+      )
+    : 0;
+
+  const savePlay = (played: boolean) => {
+    if (!slip) return;
+    const stake = parseFloat(stakeInput) || 0;
+    const book = bookOdds ? parseFloat(bookOdds) : undefined;
+    const log: ParlayPlayLog = {
+      id: `play-${slip.id}`,
+      slip_id: slip.id,
+      date: slip.date,
+      played,
+      stake: played ? stake : 0,
+      currency: bank.currency,
+      book_decimal: book,
+      result: played ? 'PENDING' : 'SKIPPED',
+      profit: 0,
+      created_at: new Date().toISOString(),
+    };
+    setPlays((prev) => {
+      const next = [...prev.filter((p) => p.slip_id !== slip.id), log];
+      return next;
+    });
+    setPlayedToday(played);
+    if (onLockSlip) onLockSlip(slip);
+  };
+
+  const settlePlay = (slipId: string, result: 'HIT' | 'MISS') => {
+    setPlays((prev) => {
+      const next = prev.map((p) => {
+        if (p.slip_id !== slipId || !p.played) return p;
+        const profit = computePlayProfit(
+          true,
+          p.stake,
+          result,
+          p.book_decimal,
+          history.find((h) => h.id === slipId)?.fair_decimal_odds
+        );
+        return { ...p, result, profit };
+      });
+      // update bank from all settled plays recalculated
+      const settledProfit = next
+        .filter((p) => p.result === 'HIT' || p.result === 'MISS')
+        .reduce((s, p) => s + (p.profit ?? 0), 0);
+      setBank((b) => ({
+        ...b,
+        current: Math.round((b.starting + settledProfit) * 100) / 100,
+      }));
+      return next;
+    });
+  };
+
   if (!slip) {
     return (
-      <div className="p-8 rounded-2xl border border-white/[0.06] bg-[#18181b] text-center">
+      <div className="p-8 rounded-2xl border border-white/[0.06] bg-[#18181b] text-center space-y-3">
         <p className="text-sm text-neutral-300">
-          No hay al menos 4 partidos para armar el Parlay KAL de 4.
+          No hay 4 piernas que pasen el filtro anti-longshot (prob ≥53% y cuota justa ≤ +110).
         </p>
-        {strategy === 'TOP4_HIGH_ONLY' && (
-          <button
-            type="button"
-            className="mt-3 text-xs text-sky-400 underline"
-            onClick={() => setStrategy('TOP4_PROB')}
-          >
-            Usar los 4 con mayor probabilidad (incluye LOW)
-          </button>
-        )}
+        <p className="text-xs text-neutral-500">
+          KAL evita equipos muy largos. Prueba estrategia “Top 4 por prob” o espera cartelera con más favoritos.
+        </p>
+        <button
+          type="button"
+          className="text-xs px-3 py-1.5 rounded-full bg-white text-black font-semibold"
+          onClick={() => setStrategy('TOP4_PROB')}
+        >
+          Relajar a Top 4 por prob
+        </button>
       </div>
     );
   }
@@ -59,46 +206,109 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-white">Parlay KAL · 4 piernas</h2>
+          <h2 className="text-lg font-semibold text-white">Parlay KAL · 4 piernas + bankroll</h2>
           <p className="text-xs text-neutral-500 mt-1 max-w-xl">
-            KAL elige los 4 picks del día con mayor probabilidad individual, calcula la
-            probabilidad conjunta y registra la efectividad real cuando cierran los 4 juegos.
-            No es una “garantía”: es un experimento medible.
+            Recomendación sin cuotas largas (modelo). Cuotas de referencia = <strong className="text-neutral-400">justas del modelo</strong>
+            {' '}(1/p). Puedes pegar la decimal de tu casa al registrar la jugada. Meta: mes en positivo.
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setStrategy('TOP4_PROB')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium ${
-              strategy === 'TOP4_PROB'
-                ? 'bg-white text-black'
-                : 'bg-white/[0.04] text-neutral-400 border border-white/[0.06]'
-            }`}
-          >
-            Top 4 por prob
-          </button>
-          <button
-            type="button"
-            onClick={() => setStrategy('TOP4_HIGH_ONLY')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium ${
-              strategy === 'TOP4_HIGH_ONLY'
-                ? 'bg-white text-black'
-                : 'bg-white/[0.04] text-neutral-400 border border-white/[0.06]'
-            }`}
-          >
-            Solo MED/HIGH
-          </button>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              ['TOP4_SAFE', 'Seguro (≥53%)'],
+              ['TOP4_PROB', 'Top 4 prob'],
+              ['TOP4_HIGH_ONLY', 'Solo MED/HIGH'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setStrategy(id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium ${
+                strategy === id
+                  ? 'bg-white text-black'
+                  : 'bg-white/[0.04] text-neutral-400 border border-white/[0.06]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Slip del día */}
+      {/* Bankroll */}
+      <div className="rounded-2xl border border-white/[0.08] bg-[#12141a] p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div>
+          <div className="text-[10px] text-neutral-500 uppercase">Bankroll</div>
+          <div className="text-lg font-bold text-white">
+            {bank.current.toFixed(2)} {bank.currency}
+          </div>
+          <input
+            type="number"
+            className="mt-1 w-full bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs"
+            value={bank.starting}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value) || 0;
+              setBank((b) => ({
+                ...b,
+                starting: v,
+                current: v + monthProfit,
+                month_start_balance: v,
+              }));
+            }}
+            title="Bankroll inicial"
+          />
+          <div className="text-[9px] text-neutral-600">Inicial (editable)</div>
+        </div>
+        <div>
+          <div className="text-[10px] text-neutral-500 uppercase">P&L del mes</div>
+          <div className={`text-lg font-bold ${monthProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {monthProfit >= 0 ? '+' : ''}
+            {monthProfit.toFixed(2)}
+          </div>
+          <div className="text-[10px] text-neutral-500">
+            Meta +{(bank.target_month_profit_pct * 100).toFixed(0)}% ≈ +{monthTarget.toFixed(1)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] text-neutral-500 uppercase">Estado mes</div>
+          <div className={`text-sm font-semibold mt-1 ${monthOnTrack ? 'text-emerald-400' : 'text-amber-400'}`}>
+            {monthOnTrack ? 'En positivo / camino' : 'En rojo — revisar estrategia'}
+          </div>
+          {!monthOnTrack && (
+            <div className="text-[10px] text-neutral-500 mt-1">
+              Baja stake, solo TOP4_SAFE, o para si honesty = COIN_FLIP
+            </div>
+          )}
+        </div>
+        <div>
+          <div className="text-[10px] text-neutral-500 uppercase">Máx stake</div>
+          <div className="text-lg font-bold text-white">
+            {(bank.max_stake_pct * 100).toFixed(0)}%
+          </div>
+          <input
+            type="range"
+            min={0.5}
+            max={5}
+            step={0.5}
+            value={bank.max_stake_pct * 100}
+            onChange={(e) =>
+              setBank((b) => ({ ...b, max_stake_pct: parseFloat(e.target.value) / 100 }))
+            }
+            className="w-full mt-1"
+          />
+        </div>
+      </div>
+
+      {/* Slip */}
       <div className="rounded-2xl border border-white/[0.08] bg-[#12141a] overflow-hidden">
         <div className="px-4 py-3 border-b border-white/[0.06] flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs text-neutral-400">
-            Slip <span className="text-neutral-200 font-mono">{slip.id}</span> · {date}
+            Slip <span className="text-neutral-200 font-mono">{slip.id}</span>
+            <span className="text-neutral-600"> · anti-longshot p≥{slip.min_leg_prob} · justa≤+{slip.max_fair_american}</span>
           </div>
           <div className={`text-xs font-semibold ${honestyColor[slip.honesty_label]}`}>
             {slip.honesty_label.replace(/_/g, ' ')}
@@ -107,18 +317,16 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
 
         <div className="divide-y divide-white/[0.04]">
           {slip.legs.map((leg, i) => (
-            <div
-              key={leg.game_pk}
-              className="px-4 py-3 flex items-center justify-between gap-3 text-sm"
-            >
+            <div key={leg.game_pk} className="px-4 py-3 flex items-center justify-between gap-3 text-sm">
               <div className="flex items-center gap-3 min-w-0">
                 <span className="text-neutral-500 font-mono text-xs w-4">{i + 1}</span>
                 <div className="min-w-0">
                   <div className="font-semibold text-white truncate">
-                    {leg.pick}{' '}
-                    <span className="text-neutral-500 font-normal">vs {leg.opponent}</span>
+                    {leg.pick} <span className="text-neutral-500 font-normal">vs {leg.opponent}</span>
                   </div>
-                  <div className="text-[11px] text-neutral-500">{leg.matchup}</div>
+                  <div className="text-[11px] text-neutral-500">
+                    {leg.matchup} · justa {leg.fair_american} ({leg.fair_decimal.toFixed(2)}x)
+                  </div>
                 </div>
               </div>
               <div className="text-right shrink-0">
@@ -131,122 +339,169 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
 
         <div className="px-4 py-4 bg-black/30 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-neutral-500">
-              Prob. conjunta
-            </div>
+            <div className="text-[10px] uppercase text-neutral-500">Prob. conjunta</div>
             <div className="text-xl font-bold text-white">{pPct}%</div>
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-neutral-500">
-              Cuota justa
-            </div>
+            <div className="text-[10px] uppercase text-neutral-500">Cuota justa ref.</div>
             <div className="text-xl font-bold text-white">{slip.fair_american}</div>
-            <div className="text-[10px] text-neutral-500">
-              {slip.fair_decimal_odds.toFixed(2)}x
-            </div>
+            <div className="text-[10px] text-neutral-500">{slip.fair_decimal_odds.toFixed(2)}x modelo</div>
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-neutral-500">Mix conf</div>
+            <div className="text-[10px] uppercase text-neutral-500">Stake sugerido</div>
+            <div className="text-xl font-bold text-white">{suggested}</div>
+            <div className="text-[10px] text-neutral-500">≤{(bank.max_stake_pct * 100).toFixed(0)}% bank</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase text-neutral-500">Mix conf</div>
             <div className="text-sm text-neutral-300">
               H{slip.conf_mix.HIGH} · M{slip.conf_mix.MEDIUM} · L{slip.conf_mix.LOW}
             </div>
           </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wide text-neutral-500">Stake demo</div>
-            <div className="text-sm text-neutral-300">1u → paga ~{slip.fair_decimal_odds.toFixed(1)}u</div>
-          </div>
         </div>
+        <p className="px-4 py-3 text-xs text-neutral-400 border-t border-white/[0.06]">{slip.honesty_note}</p>
+      </div>
 
-        <p className="px-4 py-3 text-xs text-neutral-400 border-t border-white/[0.06]">
-          {slip.honesty_note}
+      {/* Registrar jugada */}
+      <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-white">¿Jugaste este parlay?</h3>
+        <p className="text-[11px] text-neutral-400">
+          Registro solo en tu navegador (localStorage). Sirve para P&amp;L del mes y ajustar estrategia.
         </p>
-
-        {onLockSlip && (
-          <div className="px-4 pb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <label className="text-xs text-neutral-400">
+            Stake ({bank.currency})
+            <input
+              type="number"
+              value={stakeInput}
+              onChange={(e) => setStakeInput(e.target.value)}
+              className="mt-1 w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+              placeholder={String(suggested)}
+            />
+          </label>
+          <label className="text-xs text-neutral-400">
+            Cuota decimal de tu casa (opcional)
+            <input
+              type="number"
+              step="0.01"
+              value={bookOdds}
+              onChange={(e) => setBookOdds(e.target.value)}
+              className="mt-1 w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+              placeholder={`Ref. modelo ${slip.fair_decimal_odds.toFixed(2)}`}
+            />
+          </label>
+          <div className="flex items-end gap-2">
             <button
               type="button"
-              onClick={() => onLockSlip(slip)}
-              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-white text-black text-xs font-semibold hover:bg-neutral-200"
+              onClick={() => savePlay(true)}
+              className="flex-1 px-3 py-2 rounded-xl bg-white text-black text-xs font-semibold"
             >
-              Bloquear slip del día (inmutable)
+              Sí, lo jugué
+            </button>
+            <button
+              type="button"
+              onClick={() => savePlay(false)}
+              className="flex-1 px-3 py-2 rounded-xl bg-white/10 text-neutral-200 text-xs font-semibold border border-white/10"
+            >
+              No jugué
+            </button>
+          </div>
+        </div>
+        {playedToday === true && (
+          <div className="flex flex-wrap gap-2 text-xs items-center">
+            <span className="text-emerald-300">Registrado como jugado.</span>
+            <button type="button" className="underline text-neutral-400" onClick={() => settlePlay(slip.id, 'HIT')}>
+              Marcar HIT
+            </button>
+            <button type="button" className="underline text-neutral-400" onClick={() => settlePlay(slip.id, 'MISS')}>
+              Marcar MISS
             </button>
           </div>
         )}
+        {playedToday === false && (
+          <span className="text-xs text-neutral-500">Registrado: no jugado (no afecta bankroll).</span>
+        )}
       </div>
 
-      {/* Varianza */}
-      {sim && (
-        <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-4">
-          <h3 className="text-sm font-semibold text-white mb-2">Varianza (simulación 10k)</h3>
-          <p className="text-xs text-neutral-400 mb-3">
-            Si este parlay tuviera siempre p = {pPct}%, en 10.000 repeticiones…
-          </p>
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div className="rounded-xl bg-white/[0.03] p-3">
-              <div className="text-lg font-bold text-white">
-                {(sim.hit_rate * 100).toFixed(1)}%
-              </div>
-              <div className="text-[10px] text-neutral-500">hit rate sim</div>
-            </div>
-            <div className="rounded-xl bg-white/[0.03] p-3">
-              <div className="text-lg font-bold text-white">{sim.hits}</div>
-              <div className="text-[10px] text-neutral-500">hits / 10k</div>
-            </div>
-            <div className="rounded-xl bg-white/[0.03] p-3">
-              <div className="text-lg font-bold text-white">{sim.longest_drought}</div>
-              <div className="text-[10px] text-neutral-500">peor racha de misses</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Efectividad histórica de parlays KAL */}
+      {/* Efectividad KAL slips */}
       <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-4">
-        <h3 className="text-sm font-semibold text-white mb-1">Efectividad Parlay-4 KAL</h3>
-        <p className="text-[11px] text-neutral-500 mb-4">
-          Solo slips bloqueados y graded (los 4 juegos finalizados). Separado del récord de
-          partidos sueltos.
+        <h3 className="text-sm font-semibold text-white mb-1">Efectividad recomendaciones Parlay-4 KAL</h3>
+        <p className="text-[11px] text-neutral-500 mb-3">
+          Slips oficiales bloqueados (modelo). Separado de tu bankroll personal.
         </p>
         {stats.n_graded === 0 ? (
           <p className="text-xs text-neutral-400">
-            Aún no hay parlays calificados. Cuando cierren los 4 del slip, aquí verás HIT rate
-            real vs prob. promedio implicada.
+            Aún sin parlays calificados. Bloquea el slip y, al cerrar los 4 juegos, registra HIT/MISS.
           </p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <div className="text-[10px] text-neutral-500">Récord parlay</div>
+              <div className="text-[10px] text-neutral-500">Récord</div>
               <div className="text-lg font-bold text-white">
                 {stats.hits}-{stats.misses}
               </div>
             </div>
             <div>
               <div className="text-[10px] text-neutral-500">Hit rate</div>
-              <div className="text-lg font-bold text-white">
-                {(stats.hit_rate * 100).toFixed(1)}%
-              </div>
+              <div className="text-lg font-bold text-white">{(stats.hit_rate * 100).toFixed(1)}%</div>
             </div>
             <div>
-              <div className="text-[10px] text-neutral-500">p media implicada</div>
+              <div className="text-[10px] text-neutral-500">p media</div>
               <div className="text-lg font-bold text-white">
                 {(stats.avg_implied_prob * 100).toFixed(1)}%
               </div>
             </div>
             <div>
-              <div className="text-[10px] text-neutral-500">Unidades (1u)</div>
+              <div className="text-[10px] text-neutral-500">u modelo</div>
               <div className="text-lg font-bold text-white">
                 {stats.units_flat >= 0 ? '+' : ''}
                 {stats.units_flat.toFixed(1)}u
               </div>
             </div>
-            <div className="col-span-2 sm:col-span-4 text-xs text-neutral-500">
-              Últimos 10: <span className="font-mono text-neutral-300">{stats.last_10}</span>
-              {' · '}
-              Brier medio: {stats.avg_brier.toFixed(3)}
-            </div>
           </div>
         )}
       </div>
+
+      {/* Mis jugadas del mes */}
+      <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-4">
+        <h3 className="text-sm font-semibold text-white mb-2">Mis jugadas ({bank.month_key})</h3>
+        {monthPlays.length === 0 ? (
+          <p className="text-xs text-neutral-500">Ninguna registrada este mes.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="text-neutral-500 border-b border-white/10">
+                <tr>
+                  <th className="py-2">Fecha</th>
+                  <th>¿Jugó?</th>
+                  <th>Stake</th>
+                  <th>Resultado</th>
+                  <th className="text-right">Profit</th>
+                </tr>
+              </thead>
+              <tbody className="text-neutral-300">
+                {monthPlays.map((p) => (
+                  <tr key={p.id} className="border-b border-white/[0.04]">
+                    <td className="py-2">{p.date}</td>
+                    <td>{p.played ? 'Sí' : 'No'}</td>
+                    <td>{p.played ? p.stake : '—'}</td>
+                    <td>{p.result || '—'}</td>
+                    <td className={`text-right ${(p.profit ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {p.played ? `${(p.profit ?? 0) >= 0 ? '+' : ''}${(p.profit ?? 0).toFixed(2)}` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {sim && (
+        <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-4 text-xs text-neutral-400">
+          Varianza (10k): hit rate sim {(sim.hit_rate * 100).toFixed(1)}% · peor racha misses {sim.longest_drought}
+        </div>
+      )}
     </div>
   );
 }

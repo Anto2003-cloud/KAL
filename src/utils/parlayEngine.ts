@@ -1,14 +1,9 @@
 /**
- * KAL Parlay Engine — construye parlays de 4 y mide efectividad.
- *
- * Reglas de selección (KAL Pick-4 del día):
- * 1. Ordena partidos por probabilidad del lado elegido (max(home_p, away_p)).
- * 2. Toma los 4 con mayor p (desempate: HIGH > MEDIUM > LOW, luego game_pk).
- * 3. Probabilidad combinada = producto de las 4 probs (independencia aproximada).
- * 4. El slip se “bloquea” con fecha; al graduar los 4 juegos se marca HIT/MISS.
+ * KAL Parlay Engine — Pick-4, anti-longshot, bankroll y registro de jugadas.
  */
 
 import type { GamePrediction, ConfidenceLevel } from '../types';
+import { fairAmerican, fairDecimal } from './fairOdds';
 
 export interface ParlayLeg {
   game_pk: number;
@@ -20,26 +15,57 @@ export interface ParlayLeg {
   conf: ConfidenceLevel;
   home: string;
   away: string;
+  /** Cuota justa del modelo (americana) */
+  fair_american: string;
+  fair_decimal: number;
 }
 
 export interface KalParlaySlip {
   id: string;
   date: string;
-  strategy: 'TOP4_PROB' | 'TOP4_HIGH_ONLY' | 'USER';
+  strategy: 'TOP4_SAFE' | 'TOP4_PROB' | 'TOP4_HIGH_ONLY' | 'USER';
   legs: ParlayLeg[];
   combined_prob: number;
   fair_decimal_odds: number;
-  /** Cuota americana aproximada del parlay “justo” */
   fair_american: string;
   conf_mix: { HIGH: number; MEDIUM: number; LOW: number };
   honesty_label: 'EDGE_OK' | 'EDGE_DEBIL' | 'COIN_FLIP_PARLAY';
   honesty_note: string;
-  /** Resultado cuando los 4 están graded */
   status: 'OPEN' | 'HIT' | 'MISS' | 'VOID';
   legs_hit?: number;
   graded_at?: string;
   units_risked?: number;
   units_won?: number;
+  /** Filtro anti-longshot aplicado */
+  min_leg_prob: number;
+  max_fair_american: number;
+}
+
+/** Registro personal de si jugaste el parlay y cuánto */
+export interface ParlayPlayLog {
+  id: string;
+  slip_id: string;
+  date: string;
+  played: boolean;
+  stake: number; // dinero real o unidades
+  currency: 'USD' | 'U';
+  /** Cuota combinada que te dio la casa (decimal), opcional */
+  book_decimal?: number;
+  /** Resultado si ya se conoce */
+  result?: 'HIT' | 'MISS' | 'PENDING' | 'SKIPPED';
+  profit?: number; // stake * (decimal-1) si HIT, -stake si MISS
+  note?: string;
+  created_at: string;
+}
+
+export interface BankrollState {
+  starting: number;
+  current: number;
+  currency: 'USD' | 'U';
+  month_key: string; // YYYY-MM
+  month_start_balance: number;
+  max_stake_pct: number; // ej 0.02 = 2%
+  target_month_profit_pct: number; // ej 0.10 = +10% al mes
 }
 
 export interface ParlayTrackStats {
@@ -48,10 +74,8 @@ export interface ParlayTrackStats {
   hits: number;
   misses: number;
   hit_rate: number;
-  /** Promedio de combined_prob de los slips graded (calibración) */
   avg_implied_prob: number;
   units_flat: number;
-  /** Brier-like: (hit - p)^2 promedio */
   avg_brier: number;
   last_10: string;
 }
@@ -62,20 +86,29 @@ function legProb(g: GamePrediction): number {
   return Math.max(g.home_p, g.away_p);
 }
 
+/** Americana justa numérica (negativo = favorito) */
+function fairAmericanNum(p: number): number {
+  if (p >= 0.5) return -Math.round((100 * p) / (1 - p));
+  return Math.round((100 * (1 - p)) / p);
+}
+
 function toLeg(g: GamePrediction): ParlayLeg {
   const pickHome = g.home_p >= g.away_p;
   const pick = pickHome ? g.home : g.away;
   const opponent = pickHome ? g.away : g.home;
+  const p = legProb(g);
   return {
     game_pk: g.game_pk,
     game_date: g.game_date || '',
     pick,
     opponent,
     matchup: `${g.away} @ ${g.home}`,
-    leg_prob: legProb(g),
+    leg_prob: p,
     conf: g.conf,
     home: g.home,
     away: g.away,
+    fair_american: fairAmerican(p),
+    fair_decimal: fairDecimal(p),
   };
 }
 
@@ -84,7 +117,7 @@ export function combinedProb(legs: ParlayLeg[]): number {
   return legs.reduce((p, l) => p * l.leg_prob, 1);
 }
 
-export function fairAmerican(decimalOdds: number): string {
+export function fairAmericanFromDecimal(decimalOdds: number): string {
   if (decimalOdds >= 2) return `+${Math.round((decimalOdds - 1) * 100)}`;
   return `${Math.round(-100 / (decimalOdds - 1))}`;
 }
@@ -97,33 +130,57 @@ export function honestyFor(p: number, legs: ParlayLeg[]): {
   if (p >= 0.12 && lows <= 1) {
     return {
       label: 'EDGE_OK',
-      note: 'Parlay con probabilidad conjunta decente; aún así alta varianza.',
+      note: 'Parlay con probabilidad conjunta decente; aún alta varianza.',
     };
   }
   if (p >= 0.06) {
     return {
       label: 'EDGE_DEBIL',
-      note: 'Probabilidad conjunta baja. Válido para tracking, stake chico si apuestas.',
+      note: 'Probabilidad conjunta baja. Stake chico si juegas.',
     };
   }
   return {
     label: 'COIN_FLIP_PARLAY',
-    note:
-      'Varios picks ~50%. Este parlay es casi lotería. KAL lo publica para medir efectividad, no como “seguro”.',
+    note: 'Varias piernas ~50%. Alta varianza — solo para tracking o stake mínimo.',
   };
 }
 
 /**
- * Parlay oficial del día: los 4 picks con mayor probabilidad individual.
+ * Anti-longshot:
+ * - min_leg_prob default 0.53 (no perros largos del modelo)
+ * - max_fair_american default +110 (si la justa es más positiva, se descarta)
  */
 export function buildKalPick4(
   games: GamePrediction[],
   date: string,
-  strategy: KalParlaySlip['strategy'] = 'TOP4_PROB'
+  strategy: KalParlaySlip['strategy'] = 'TOP4_SAFE',
+  opts?: { min_leg_prob?: number; max_fair_american?: number }
 ): KalParlaySlip | null {
+  const minP = opts?.min_leg_prob ?? (strategy === 'TOP4_SAFE' ? 0.53 : 0.5);
+  const maxAm = opts?.max_fair_american ?? 110; // +110 máximo como “largo”
+
   let pool = [...games];
   if (strategy === 'TOP4_HIGH_ONLY') {
     pool = pool.filter((g) => g.conf === 'HIGH' || g.conf === 'MEDIUM');
+  }
+
+  pool = pool.filter((g) => {
+    const p = legProb(g);
+    if (p < minP) return false;
+    const am = fairAmericanNum(p);
+    // underdog with american > maxAm rejected
+    if (am > maxAm) return false;
+    return true;
+  });
+
+  if (pool.length < 4) {
+    // relax once: allow minP - 0.02
+    pool = [...games].filter((g) => {
+      const p = legProb(g);
+      if (p < minP - 0.02) return false;
+      const am = fairAmericanNum(p);
+      return am <= maxAm + 20;
+    });
   }
   if (pool.length < 4) return null;
 
@@ -151,19 +208,17 @@ export function buildKalPick4(
     legs,
     combined_prob: p,
     fair_decimal_odds: dec,
-    fair_american: fairAmerican(dec),
+    fair_american: fairAmericanFromDecimal(dec),
     conf_mix,
     honesty_label: label,
     honesty_note: note,
     status: 'OPEN',
     units_risked: 1,
+    min_leg_prob: minP,
+    max_fair_american: maxAm,
   };
 }
 
-/**
- * Gradúa un slip cuando conoces el ganador real de cada game_pk.
- * results: map game_pk -> equipo ganador (abbr)
- */
 export function gradeParlay(
   slip: KalParlaySlip,
   results: Record<number, string>
@@ -224,7 +279,6 @@ export function computeParlayStats(slips: KalParlaySlip[]): ParlayTrackStats {
   };
 }
 
-/** Simulación de varianza: n trials Bernoulli(p) */
 export function simulateParlayVariance(
   p: number,
   trials = 10000
@@ -241,9 +295,58 @@ export function simulateParlayVariance(
       if (drought > maxDrought) maxDrought = drought;
     }
   }
+  return { hits, hit_rate: hits / trials, longest_drought: maxDrought };
+}
+
+/** Stake sugerido: min(max_pct * bank, bank * kelly_frac muy conservador) */
+export function suggestStake(
+  bank: number,
+  combinedProb: number,
+  bookDecimal: number | undefined,
+  maxPct: number
+): number {
+  const cap = bank * maxPct;
+  if (!bookDecimal || bookDecimal <= 1 || combinedProb <= 0) {
+    return Math.max(0, Math.round(cap * 100) / 100);
+  }
+  // Kelly fraccional 1/4
+  const b = bookDecimal - 1;
+  const q = 1 - combinedProb;
+  const kelly = (combinedProb * b - q) / b;
+  const frac = Math.max(0, kelly * 0.25);
+  const stake = Math.min(cap, bank * frac);
+  return Math.max(0, Math.round(stake * 100) / 100);
+}
+
+export function monthKey(d = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function defaultBankroll(): BankrollState {
+  const mk = monthKey();
   return {
-    hits,
-    hit_rate: hits / trials,
-    longest_drought: maxDrought,
+    starting: 100,
+    current: 100,
+    currency: 'USD',
+    month_key: mk,
+    month_start_balance: 100,
+    max_stake_pct: 0.02,
+    target_month_profit_pct: 0.1,
   };
+}
+
+export function computePlayProfit(
+  played: boolean,
+  stake: number,
+  result: ParlayPlayLog['result'],
+  bookDecimal?: number,
+  fairDecimal?: number
+): number {
+  if (!played || result === 'SKIPPED' || result === 'PENDING' || !result) return 0;
+  if (result === 'MISS') return -stake;
+  if (result === 'HIT') {
+    const dec = bookDecimal && bookDecimal > 1 ? bookDecimal : fairDecimal || 2;
+    return stake * (dec - 1);
+  }
+  return 0;
 }

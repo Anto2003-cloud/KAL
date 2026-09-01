@@ -328,21 +328,45 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
           )}
         </div>
         <div>
-          <div className="text-[10px] text-neutral-500 uppercase">Máx stake</div>
-          <div className="text-lg font-bold text-white">
-            {(bank.max_stake_pct * 100).toFixed(0)}%
+          <div className="text-[10px] text-neutral-500 uppercase">
+            {bank.staking_plan === 'PLAN_10_20' ? 'Stake del plan' : 'Máx stake'}
           </div>
-          <input
-            type="range"
-            min={0.5}
-            max={5}
-            step={0.5}
-            value={bank.max_stake_pct * 100}
-            onChange={(e) =>
-              setBank((b) => ({ ...b, max_stake_pct: parseFloat(e.target.value) / 100 }))
-            }
-            className="w-full mt-1"
-          />
+          {bank.staking_plan === 'PLAN_10_20' ? (
+            <>
+              <div className="text-lg font-bold text-white">
+                {planDecision.mode === 'RECOVERY_20'
+                  ? '20%'
+                  : planDecision.mode === 'BLOCKED' || planDecision.play_advice === 'NO_JUGAR'
+                    ? '—'
+                    : '10%'}
+              </div>
+              <div className="text-[10px] text-neutral-500 mt-1">
+                {planDecision.play_advice === 'NO_JUGAR'
+                  ? 'Hoy: no jugar (plan en pausa)'
+                  : planDecision.mode === 'RECOVERY_20'
+                    ? `Recuperación · ${planDecision.stake} ${bank.currency}`
+                    : `Base · ${planDecision.stake} ${bank.currency}`}
+              </div>
+              <div className="text-[9px] text-neutral-600 mt-1">Plan fijo 10% / 20% (no usa el slider 5%)</div>
+            </>
+          ) : (
+            <>
+              <div className="text-lg font-bold text-white">
+                {(bank.max_stake_pct * 100).toFixed(0)}%
+              </div>
+              <input
+                type="range"
+                min={0.5}
+                max={20}
+                step={0.5}
+                value={bank.max_stake_pct * 100}
+                onChange={(e) =>
+                  setBank((b) => ({ ...b, max_stake_pct: parseFloat(e.target.value) / 100 }))
+                }
+                className="w-full mt-1"
+              />
+            </>
+          )}
         </div>
       </div>
 
@@ -438,7 +462,13 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
           <div>
             <div className="text-[10px] uppercase text-neutral-500">Stake sugerido</div>
             <div className="text-xl font-bold text-white">{suggested}</div>
-            <div className="text-[10px] text-neutral-500">≤{(bank.max_stake_pct * 100).toFixed(0)}% bank</div>
+            <div className="text-[10px] text-neutral-500">
+              {bank.staking_plan === 'PLAN_10_20'
+                ? planDecision.play_advice === 'NO_JUGAR'
+                  ? 'bloqueado hoy'
+                  : `${(planDecision.pct * 100).toFixed(0)}% del bank (plan)`
+                : `≤${(bank.max_stake_pct * 100).toFixed(0)}% bank`}
+            </div>
           </div>
           <div>
             <div className="text-[10px] uppercase text-neutral-500">Mix conf</div>

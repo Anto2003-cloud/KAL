@@ -8,6 +8,7 @@ import {
   defaultBankroll,
   monthKey,
   computePlayProfit,
+  stakeForUserPlan,
   type KalParlaySlip,
   type ParlayPlayLog,
   type BankrollState,
@@ -67,14 +68,25 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
   const [bookOdds, setBookOdds] = useState('');
   const [playedToday, setPlayedToday] = useState<boolean | null>(null);
 
+  // Plan 10/20: en recuperación forzar estrategia segura
+  const effectiveStrategy =
+    bank.recovery_active && strategy !== 'TOP4_SAFE' ? 'TOP4_SAFE' : strategy;
+
   const slip = useMemo(
     () =>
-      buildKalPick4(games, date, strategy, {
-        min_leg_prob: strategy === 'TOP4_SAFE' ? 0.53 : 0.5,
+      buildKalPick4(games, date, effectiveStrategy, {
+        min_leg_prob: effectiveStrategy === 'TOP4_SAFE' ? 0.53 : 0.5,
         max_fair_american: 110,
       }),
-    [games, date, strategy]
+    [games, date, effectiveStrategy]
   );
+
+  const planDecision = useMemo(() => {
+    if (!slip) {
+      return stakeForUserPlan(bank, 'COIN_FLIP_PARLAY');
+    }
+    return stakeForUserPlan(bank, slip.honesty_label);
+  }, [bank, slip]);
 
   const stats = useMemo(() => computeParlayStats(history), [history]);
 
@@ -113,29 +125,44 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
       setBookOdds(existing.book_decimal ? String(existing.book_decimal) : '');
     } else {
       setPlayedToday(null);
-      const sug = suggestStake(
-        bank.current,
-        slip.combined_prob,
-        undefined,
-        bank.max_stake_pct
-      );
-      setStakeInput(sug ? String(sug) : '');
+      if (bank.staking_plan === 'PLAN_10_20') {
+        const d = stakeForUserPlan(bank, slip.honesty_label);
+        setStakeInput(d.stake ? String(d.stake) : '');
+      } else {
+        const sug = suggestStake(
+          bank.current,
+          slip.combined_prob,
+          undefined,
+          bank.max_stake_pct
+        );
+        setStakeInput(sug ? String(sug) : '');
+      }
       setBookOdds('');
     }
   }, [slip?.id]);
 
-  const suggested = slip
-    ? suggestStake(
-        bank.current,
-        slip.combined_prob,
-        bookOdds ? parseFloat(bookOdds) : undefined,
-        bank.max_stake_pct
-      )
-    : 0;
+  const suggested =
+    bank.staking_plan === 'PLAN_10_20'
+      ? planDecision.stake
+      : slip
+        ? suggestStake(
+            bank.current,
+            slip.combined_prob,
+            bookOdds ? parseFloat(bookOdds) : undefined,
+            bank.max_stake_pct
+          )
+        : 0;
 
   const savePlay = (played: boolean) => {
     if (!slip) return;
-    const stake = parseFloat(stakeInput) || 0;
+    if (played && planDecision.mode === 'BLOCKED') {
+      alert(planDecision.reason);
+      return;
+    }
+    const stake =
+      bank.staking_plan === 'PLAN_10_20'
+        ? planDecision.stake || parseFloat(stakeInput) || 0
+        : parseFloat(stakeInput) || 0;
     const book = bookOdds ? parseFloat(bookOdds) : undefined;
     const log: ParlayPlayLog = {
       id: `play-${slip.id}`,
@@ -148,12 +175,20 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
       result: played ? 'PENDING' : 'SKIPPED',
       profit: 0,
       created_at: new Date().toISOString(),
+      note:
+        bank.staking_plan === 'PLAN_10_20'
+          ? `plan=${planDecision.mode} pct=${(planDecision.pct * 100).toFixed(0)}%`
+          : undefined,
     };
     setPlays((prev) => {
       const next = [...prev.filter((p) => p.slip_id !== slip.id), log];
       return next;
     });
     setPlayedToday(played);
+    if (!played) {
+      // Skip no activa recuperación
+      setBank((b) => ({ ...b, last_played_result: 'SKIPPED' }));
+    }
     if (onLockSlip) onLockSlip(slip);
   };
 
@@ -166,17 +201,19 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
           p.stake,
           result,
           p.book_decimal,
-          history.find((h) => h.id === slipId)?.fair_decimal_odds
+          history.find((h) => h.id === slipId)?.fair_decimal_odds || slip?.fair_decimal_odds
         );
         return { ...p, result, profit };
       });
-      // update bank from all settled plays recalculated
       const settledProfit = next
         .filter((p) => p.result === 'HIT' || p.result === 'MISS')
         .reduce((s, p) => s + (p.profit ?? 0), 0);
       setBank((b) => ({
         ...b,
         current: Math.round((b.starting + settledProfit) * 100) / 100,
+        last_played_result: result,
+        // Plan 10/20: MISS → mañana 20%; HIT → vuelve a 10%
+        recovery_active: result === 'MISS',
       }));
       return next;
     });
@@ -209,10 +246,11 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-white">Parlay KAL · 4 piernas + bankroll</h2>
+          <h2 className="text-lg font-semibold text-white">Parlay KAL · plan 10/20 + bankroll</h2>
           <p className="text-xs text-neutral-500 mt-1 max-w-xl">
-            Recomendación sin cuotas largas (modelo). Cuotas de referencia = <strong className="text-neutral-400">justas del modelo</strong>
-            {' '}(1/p). Puedes pegar la decimal de tu casa al registrar la jugada. Meta: mes en positivo.
+            Tu plan: <strong className="text-neutral-300">10% del bank</strong>; si pierdes, al día siguiente{' '}
+            <strong className="text-neutral-300">20% en parlay más seguro</strong>; si ganas, vuelves a 10%.
+            Cuota ref. = justa del modelo; pega la de tu casa al registrar.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -302,6 +340,37 @@ export function ParlayLab({ games, date, history = [], onLockSlip }: Props) {
           />
         </div>
       </div>
+
+
+      {/* Plan 10/20 del usuario */}
+      {bank.staking_plan === 'PLAN_10_20' && (
+        <div
+          className={`rounded-2xl border p-4 text-xs space-y-2 ${
+            planDecision.mode === 'RECOVERY_20'
+              ? 'border-amber-500/30 bg-amber-500/10 text-amber-100'
+              : planDecision.mode === 'BLOCKED'
+                ? 'border-rose-500/30 bg-rose-500/10 text-rose-100'
+                : 'border-cyan-500/20 bg-cyan-500/5 text-cyan-100'
+          }`}
+        >
+          <div className="font-semibold text-sm text-white">Tu plan: 10% → si pierdes, 20% más seguro → vuelves a 10%</div>
+          <p>{planDecision.reason}</p>
+          <div className="flex flex-wrap gap-3 text-[11px] text-neutral-300">
+            <span>
+              Hoy: <strong className="text-white">{planDecision.mode}</strong>
+            </span>
+            <span>
+              Stake plan: <strong className="text-white">{planDecision.stake}</strong> ({(planDecision.pct * 100).toFixed(0)}%)
+            </span>
+            {bank.recovery_active && (
+              <span className="text-amber-300">Estrategia forzada: Seguro (≥53%)</span>
+            )}
+          </div>
+          {planDecision.mode === 'BLOCKED' && (
+            <p className="text-rose-200">No registres “Sí lo jugué” al 20% hoy. Mejor “No jugué” o espera slip más seguro.</p>
+          )}
+        </div>
+      )}
 
       {/* Slip */}
       <div className="rounded-2xl border border-white/[0.08] bg-[#12141a] overflow-hidden">

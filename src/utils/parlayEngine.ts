@@ -64,8 +64,13 @@ export interface BankrollState {
   currency: 'USD' | 'U';
   month_key: string; // YYYY-MM
   month_start_balance: number;
-  max_stake_pct: number; // ej 0.02 = 2%
+  max_stake_pct: number; // tope general (en plan 10/20 se ignora para el cálculo)
   target_month_profit_pct: number; // ej 0.10 = +10% al mes
+  /** Plan del usuario: 10% normal, 20% día después de MISS (más seguro) */
+  staking_plan: 'FLAT_PCT' | 'PLAN_10_20';
+  /** Último resultado de una jugada real (para activar recuperación) */
+  last_played_result?: 'HIT' | 'MISS' | 'SKIPPED' | null;
+  recovery_active?: boolean;
 }
 
 export interface ParlayTrackStats {
@@ -330,8 +335,64 @@ export function defaultBankroll(): BankrollState {
     currency: 'USD',
     month_key: mk,
     month_start_balance: 100,
-    max_stake_pct: 0.02,
+    max_stake_pct: 0.1,
     target_month_profit_pct: 0.1,
+    staking_plan: 'PLAN_10_20',
+    last_played_result: null,
+    recovery_active: false,
+  };
+}
+
+export type StakePlanDecision = {
+  mode: 'BASE_10' | 'RECOVERY_20' | 'BLOCKED';
+  pct: number;
+  stake: number;
+  reason: string;
+  force_safe_strategy: boolean;
+};
+
+/**
+ * Plan del usuario:
+ * - Normal: 10% del bank actual
+ * - Tras MISS jugado: 20% al día siguiente en parlay más seguro
+ * - Tras HIT o SKIP: vuelve a 10%
+ * - Si recovery pero slip es COIN_FLIP: no recomienda 20% (bloquea o avisa)
+ */
+export function stakeForUserPlan(
+  bank: BankrollState,
+  honesty: 'EDGE_OK' | 'EDGE_DEBIL' | 'COIN_FLIP_PARLAY'
+): StakePlanDecision {
+  const recovery = Boolean(bank.recovery_active);
+  if (recovery) {
+    if (honesty === 'COIN_FLIP_PARLAY') {
+      return {
+        mode: 'BLOCKED',
+        pct: 0,
+        stake: 0,
+        reason:
+          'Modo recuperación (20%), pero el slip de hoy es COIN_FLIP. No subas stake: espera un día más seguro o no juegues.',
+        force_safe_strategy: true,
+      };
+    }
+    const pct = 0.2;
+    const stake = Math.round(bank.current * pct * 100) / 100;
+    return {
+      mode: 'RECOVERY_20',
+      pct,
+      stake,
+      reason:
+        'Ayer (última jugada) fue MISS → hoy 20% del bank en parlay MÁS SEGURO para intentar recuperar, luego vuelves a 10%.',
+      force_safe_strategy: true,
+    };
+  }
+  const pct = 0.1;
+  const stake = Math.round(bank.current * pct * 100) / 100;
+  return {
+    mode: 'BASE_10',
+    pct,
+    stake,
+    reason: 'Plan base: 10% del bank en el parlay del día.',
+    force_safe_strategy: false,
   };
 }
 

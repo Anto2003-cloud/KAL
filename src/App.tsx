@@ -21,7 +21,7 @@ import { GamePrediction } from './types';
 import { Search } from 'lucide-react';
 
 export default function App() {
-  const [activeDate, setActiveDate] = useState<string>('2026-08-31');
+  const [activeDate, setActiveDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [activeTab, setActiveTab] = useState<'preds' | 'pillars' | 'history' | 'lab' | 'parlay'>('preds');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedConfidence, setSelectedConfidence] = useState<string>('HIGH');
@@ -33,10 +33,10 @@ export default function App() {
   const [livePreds, setLivePreds] = useState<GamePrediction[] | null>(null);
   const [livePanel, setLivePanel] = useState<typeof TRACKING_PANEL | null>(null);
 
-  // Cargar cerebro vivo si VITE_KAL_API_URL está definida
+  // Cargar cerebro vivo + refresco cada 3 min
   React.useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const load = async () => {
       if (!isLiveConfigured()) {
         setLiveMode(false);
         setLiveNote('Sin VITE_KAL_API_URL — datos embebidos (no autónomo aún)');
@@ -50,19 +50,29 @@ export default function App() {
         return;
       }
       setLiveMode(true);
-      setLiveNote('Conectado al cerebro vivo (API)');
+      const panelFromStatus = st.raw?.panel;
+      const rec = panelFromStatus?.record ?? '—';
+      const n = panelFromStatus?.n_graded ?? '—';
+      setLiveNote(
+        `Conectado · récord ${rec} · ${n} graded · preds hoy ${st.raw?.today_preds ?? '—'}`
+      );
+      const day = activeDate || new Date().toISOString().slice(0, 10);
       const [preds, panel] = await Promise.all([
-        fetchLivePreds(activeDate),
+        fetchLivePreds(day),
         fetchLivePanel(),
       ]);
       if (cancelled) return;
-      if (preds && preds.length) {
-        // map loose API rows → GamePrediction shape best-effort
-        setLivePreds(preds as GamePrediction[]);
-      }
+      if (preds && preds.length) setLivePreds(preds as GamePrediction[]);
+      else setLivePreds(null);
       if (panel) setLivePanel(panel as any);
-    })();
-    return () => { cancelled = true; };
+      else if (panelFromStatus) setLivePanel(panelFromStatus as any);
+    };
+    load();
+    const id = setInterval(load, 180000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [activeDate]);
 
     const [parlayHistory, setParlayHistory] = useState<KalParlaySlip[]>(() => {
@@ -85,12 +95,13 @@ export default function App() {
     setTimeout(() => setPipelineToast(null), 3000);
   };
 
+  const todayIso = new Date().toISOString().slice(0, 10);
   const availableDates = Array.from(
     new Set([
+      todayIso,
+      activeDate,
       ...(livePreds?.length ? [activeDate] : []),
       ...Object.keys(RAW_PREDICTIONS),
-      '2026-08-31',
-      '2026-08-30',
     ])
   ).sort().reverse();
   const currentPredictions = (livePreds && livePreds.length ? livePreds : (RAW_PREDICTIONS[activeDate] || [])) as GamePrediction[];

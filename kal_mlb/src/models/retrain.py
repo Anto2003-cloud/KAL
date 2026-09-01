@@ -32,7 +32,7 @@ MODELS = PROJECT_ROOT / "data" / "models"
 RESULTS = PROJECT_ROOT / "data" / "results"
 MODELS.mkdir(parents=True, exist_ok=True)
 
-MIN_GRADED_FOR_RETRAIN = 75
+MIN_GRADED_FOR_RETRAIN = 50
 
 def detect_season_phase(today=None):
     """regular | stretch_run | postseason_window — for logging and future PS models."""

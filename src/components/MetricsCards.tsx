@@ -86,7 +86,9 @@ export const MetricsCards: React.FC<MetricsCardsProps> = ({ panel, champion }) =
       </div>
 
       <p className="col-span-full text-[10px] text-neutral-600 mt-1 sm:col-span-4">
-        Récord = partidos graded del API (Railway). Parlays en la pestaña Parlay 4.
+        Récord = partidos graded del API (Railway).
+        {panel.updated_at ? ` Actualizado: ${String(panel.updated_at).slice(0, 19)}` : ''}
+        {' '}· Parlays en Parlay 4.
       </p>
     </div>
   );

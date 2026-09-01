@@ -167,6 +167,12 @@ def run_cycle() -> dict:
             _export_today_json()
         except Exception as ex:
             report["export_error"] = str(ex)
+        try:
+            # re-grade and refresh panel json for frontend
+            from src.tracking.panel import update_tracking
+            report["panel_refresh"] = update_tracking()
+        except Exception as ex:
+            report["panel_refresh_error"] = str(ex)
         _state["last_cycle_at"] = datetime.now(timezone.utc).isoformat()
         _state["last_cycle_ok"] = True
         _state["last_error"] = None
@@ -259,6 +265,34 @@ def history(limit: int = Query(500, ge=1, le=2000)):
         "count": len(rows_sorted),
         "live": True,
         "items": rows_sorted[:limit],
+    }
+
+
+
+@app.get("/api/retrain/status")
+def retrain_status():
+    """Estado del gate de retrain (no lanza train pesado)."""
+    panel = _load_panel()
+    n = int(panel.get("n_graded") or 0)
+    min_g = 50
+    champ = {}
+    try:
+        cp = KAL / "data" / "models" / "champion.json"
+        if cp.exists():
+            champ = json.loads(cp.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {
+        "n_graded": n,
+        "min_graded_for_retrain": min_g,
+        "ready_to_retrain": n >= min_g,
+        "graded_remaining": max(0, min_g - n),
+        "champion": {
+            "version": champ.get("version"),
+            "promoted_at": champ.get("promoted_at"),
+            "n_graded_at_promotion": champ.get("n_graded_at_promotion"),
+        },
+        "note": "El retrain solo promociona si el candidato gana al campeón en graded nuevos.",
     }
 
 

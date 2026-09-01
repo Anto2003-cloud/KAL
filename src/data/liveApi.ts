@@ -88,8 +88,8 @@ export async function fetchLiveStatus(): Promise<{
 
 export async function fetchLivePreds(date: string): Promise<any[] | null> {
   if (!API_BASE) return null;
-  try {
-    const r = await fetch(`${API_BASE}/api/preds?date=${encodeURIComponent(date)}`, {
+  const load = async (d: string) => {
+    const r = await fetch(`${API_BASE}/api/preds?date=${encodeURIComponent(d)}`, {
       cache: 'no-store',
     });
     if (!r.ok) return null;
@@ -97,6 +97,13 @@ export async function fetchLivePreds(date: string): Promise<any[] | null> {
     const rows = j.predictions || j || [];
     if (!Array.isArray(rows) || !rows.length) return null;
     return rows.map(mapApiPrediction);
+  };
+  try {
+    const primary = await load(date);
+    if (primary?.length) return primary;
+    const today = new Date().toISOString().slice(0, 10);
+    if (today !== date) return load(today);
+    return null;
   } catch {
     return null;
   }

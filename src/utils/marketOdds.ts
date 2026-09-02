@@ -1,3 +1,4 @@
+import { decimalToAmerican } from './fairOdds';
 /**
  * Value vs mercado.
  * - Sin API key: usa solo cuota justa del modelo.
@@ -69,10 +70,10 @@ export function valueForPick(
     edge,
     has_value,
     label: has_value
-      ? `Casa ${decStr}x · VALUE +${(edge * 100).toFixed(1)}%${bookTag}`
+      ? `${decimalToAmerican(market_decimal)} · VALUE +${(edge * 100).toFixed(1)}%${bookTag}`
       : edge > -0.02
-        ? `Casa ${decStr}x · alineado${bookTag}`
-        : `Casa ${decStr}x · sin value (${(edge * 100).toFixed(1)}%)${bookTag}`,
+        ? `${decimalToAmerican(market_decimal)} · alineado${bookTag}`
+        : `${decimalToAmerican(market_decimal)} · sin value (${(edge * 100).toFixed(1)}%)${bookTag}`,
   };
 }
 

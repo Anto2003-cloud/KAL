@@ -5,6 +5,7 @@ import { TeamLogo } from './TeamLogo';
 import { generatePitcherVsTeamStats } from '../utils/pitcherVsOpponentHelper';
 import { ChevronRight } from 'lucide-react';
 import { valueForPick, type MarketLine } from '../utils/marketOdds';
+import { decimalToAmerican } from '../utils/fairOdds';
 
 interface PredictionCardProps {
   prediction: GamePrediction;
@@ -152,7 +153,7 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
           <span className="text-[11px] text-neutral-500">Cuota casa (moneyline)</span>
           <span className="font-mono text-[11px] text-neutral-200">
             {value.market_decimal
-              ? `${value.market_decimal.toFixed(2)}x${marketLine?.book ? ` · ${marketLine.book}` : ''}`
+              ? `${decimalToAmerican(value.market_decimal)}${marketLine?.book ? ` · ${marketLine.book}` : ''}`
               : '— sin línea de casa'}
           </span>
         </div>

@@ -1,6 +1,31 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { GamePrediction } from '../types';
 import { findMarketLine, type MarketLine } from '../utils/marketOdds';
+import { decimalToAmerican } from '../utils/fairOdds';
+
+/** Acepta decimal (1.65) o americana (-130 / +150) → decimal */
+function parseOddsInput(raw: string): number | undefined {
+  const s = (raw || '').trim().replace(',', '.');
+  if (!s) return undefined;
+  const n = parseFloat(s);
+  if (!Number.isFinite(n)) return undefined;
+  // decimal típico 1.01–50
+  if (n >= 1.01 && n <= 100 && !s.startsWith('+') && !(s.startsWith('-') && n < -1 && Math.abs(n) >= 100)) {
+    // si es -130 style, n is -130
+    if (n <= -100 || n >= 100) {
+      // americana
+      if (n < 0) return 1 + 100 / Math.abs(n);
+      return 1 + n / 100;
+    }
+    return n; // decimal
+  }
+  // americana +150 / -110
+  if (n <= -100) return 1 + 100 / Math.abs(n);
+  if (n >= 100) return 1 + n / 100;
+  if (n > 1 && n < 100) return n;
+  return undefined;
+}
+
 import { TEAMS_META } from '../data/mlbData';
 import {
   buildKalPick4,
@@ -209,7 +234,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
       bank.staking_plan === 'PLAN_10_20'
         ? planDecision.stake || parseFloat(stakeInput) || 0
         : parseFloat(stakeInput) || 0;
-    const book = bookOdds ? parseFloat(bookOdds) : undefined;
+    const book = bookOdds ? parseOddsInput(bookOdds) : undefined;
     const log: ParlayPlayLog = {
       id: `play-${slip.id}`,
       slip_id: slip.id,
@@ -496,7 +521,8 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
                       if (!dec) return <span className="text-amber-500/80">sin cuota casa</span>;
                       return (
                         <span className="text-emerald-400/90">
-                          casa {dec.toFixed(2)}x{line.book ? ` · ${line.book}` : ''}
+                          {decimalToAmerican(dec)}
+                          {line.book ? ` · ${line.book}` : ''}
                         </span>
                       );
                     })()}
@@ -520,7 +546,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
             <div className="text-[10px] uppercase text-neutral-500">Cuota casa (ref.)</div>
             <div className="text-xl font-bold text-white">
               {marketReference?.combinedDecimalEstimate
-                ? `${marketReference.combinedDecimalEstimate.toFixed(2)}x`
+                ? decimalToAmerican(marketReference.combinedDecimalEstimate)
                 : '—'}
             </div>
             <div className="text-[10px] text-neutral-500">
@@ -572,18 +598,17 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
             <span className="text-[10px] text-neutral-600">El dinero que apostaste en la casa</span>
           </label>
           <label className="text-xs text-neutral-400">
-            2. Cuota decimal de la casa (lo que paga el parlay)
+            2. Cuota de tu casa (americana, ej. -130 o +450)
             <input
-              type="number"
-              min={1.01}
-              step="0.01"
+              type="text"
+              inputMode="decimal"
               value={bookOdds}
               onChange={(e) => setBookOdds(e.target.value)}
               className="mt-1 w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
               placeholder={
                 marketReference?.combinedDecimalEstimate
-                  ? `Ej. ${marketReference.combinedDecimalEstimate.toFixed(2)} (ref. casas)`
-                  : 'Ej. 8.50 cuota de tu ticket'
+                  ? `Ej. ${decimalToAmerican(marketReference.combinedDecimalEstimate)} (ref. casas)`
+                  : 'Ej. -110 o +150 de tu ticket'
               }
             />
             <span className="text-[10px] text-neutral-600">
@@ -614,7 +639,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
         {/* Preview P&L */}
         {(() => {
           const st = parseFloat(stakeInput) || 0;
-          const dec = parseFloat(bookOdds) || marketReference?.combinedDecimalEstimate || 0;
+          const dec = parseOddsInput(bookOdds) || marketReference?.combinedDecimalEstimate || 0;
           const winProfit = st > 0 && dec > 1 ? st * (dec - 1) : 0;
           const totalReturn = st > 0 && dec > 1 ? st * dec : 0;
           return (
@@ -635,7 +660,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
               <div>
                 <div className="text-neutral-500">Cuota usada</div>
                 <div className="text-white font-mono">
-                  {dec > 0 ? `${dec.toFixed(2)}x` : '—'}{' '}
+                  {dec > 1 ? decimalToAmerican(dec) : '—'}{' '}
                   {bookOdds ? '(tu ticket)' : marketReference?.combinedDecimalEstimate ? '(ref. casas)' : ''}
                 </div>
               </div>

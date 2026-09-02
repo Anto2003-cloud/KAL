@@ -32,8 +32,12 @@ function parseExplanation(exp: string) {
       risks.push(line);
     else if (line.startsWith('Riesgos:')) risks.push(line.replace(/^Riesgos:\s*/, ''));
     else if (line.startsWith('Lineup') || line.startsWith('📋')) lineups.push(line);
-    else if (line.startsWith('Factores') || line.includes('favor del pick') || line.includes('win%'))
+    else if (line.startsWith('Factores'))
       factors.push(line.replace(/^Factores[^:]*:\s*/i, ''));
+    else if (line.startsWith('•') || line.startsWith('→') || line.startsWith('✓') || line.startsWith('⚡') || line.includes('IMPORTANTE') || line.includes('Edge vs') || line.includes('Resumen:'))
+      factors.push(line.replace(/^•\s*/, ''));
+    else if (line.includes('win%') || line.includes('Forma') || line.includes('OPS') || line.includes('Bullpen') || line.includes('lesiones') || line.includes('Quality starts'))
+      factors.push(line);
     else if (line.startsWith('📉')) factors.push(line);
     else other.push(line);
   }
@@ -159,8 +163,8 @@ export const GameDetailModal: React.FC<GameDetailModalProps> = ({ prediction, on
               <ul className="space-y-1.5 text-sm text-neutral-200">
                 {blocks.factors.map((f, i) => (
                   <li key={i} className="flex gap-2">
-                    <span className="text-emerald-500">•</span>
-                    <span>{f}</span>
+                    <span className={f.includes('IMPORTANTE') || f.includes('⚡') ? 'text-amber-400' : 'text-emerald-500'}>•</span>
+                    <span className={f.includes('IMPORTANTE') || f.includes('⚡') ? 'text-amber-200 font-medium' : ''}>{f}</span>
                   </li>
                 ))}
               </ul>

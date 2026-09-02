@@ -293,113 +293,208 @@ def _fmt_lineup(names) -> str:
 
 
 def make_explanation(row: pd.Series, home_prob: float) -> str:
-    """Rich human-readable explanation: pick, confidence, drivers, lineups, risks."""
+    """Explicación detallada y honesta: pick, abridores comparados, drivers numéricos, riesgos."""
     home = row.get("home_team_abbr", "HOME")
     away = row.get("away_team_abbr", "AWAY")
     winner = home if home_prob >= 0.5 else away
+    loser = away if winner == home else home
     conf = confidence_label(home_prob)
+    edge = abs(home_prob - 0.5) * 2  # 0..1
     lines = []
 
-    # Header
     lines.append(
         f"PREDICCIÓN: {winner} | {home} {home_prob*100:.1f}% — {away} {(1-home_prob)*100:.1f}% | Confianza: {conf}"
     )
+    lines.append(
+        f"Edge vs 50/50: {abs(home_prob-0.5)*100:.1f} puntos porcentuales "
+        f"({'claro' if abs(home_prob-0.5) >= 0.08 else 'moderado' if abs(home_prob-0.5) >= 0.05 else 'mínimo / coin-flip'})."
+    )
     if conf == "LOW":
-        lines.append("⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal.")
+        lines.append(
+            "⚠️ No existe una ventaja estadística suficientemente grande; el pick es marginal. "
+            "Úsalo solo con stake baja o como tracking, no como apuesta fuerte."
+        )
 
-    # Season phase awareness
     try:
         from src.models.retrain import detect_season_phase
         phase = detect_season_phase()
         if phase == "stretch_run":
-            lines.append("📅 Fase: tramo final de temporada regular — rotaciones y call-ups pueden alterar bullpens.")
+            lines.append("📅 Fase: tramo final de temporada — call-ups y bullpens irregulares aumentan ruido.")
         elif phase == "postseason_window":
-            lines.append("🏆 Fase: ventana de postseason — muestra pequeña, abridores cortos, bullpens de alto leverage; mayor incertidumbre.")
+            lines.append("🏆 Fase postseason: muestra pequeña y mayor incertidumbre.")
     except Exception:
         pass
 
-    # Starters
-    hs = row.get("home_starter_name") or "?"
-    as_ = row.get("away_starter_name") or "?"
+    # --- Abridores (comparación explícita) ---
+    hs = row.get("home_starter_name") or "TBD"
+    as_ = row.get("away_starter_name") or "TBD"
     lines.append(f"Abridor: {as_} ({away}) vs {hs} ({home})")
     h_era, a_era = row.get("sp_era_prev_home"), row.get("sp_era_prev_away")
-    if pd.notna(h_era) or pd.notna(a_era):
-        he = f"{h_era:.2f}" if pd.notna(h_era) else "n/d"
-        ae = f"{a_era:.2f}" if pd.notna(a_era) else "n/d"
-        lines.append(f"  ERA temporada previa: {as_} {ae} | {hs} {he}")
+    he = f"{float(h_era):.2f}" if pd.notna(h_era) else "n/d"
+    ae = f"{float(a_era):.2f}" if pd.notna(a_era) else "n/d"
+    lines.append(f"  ERA (ref. previa/season): {as_} {ae} | {hs} {he}")
 
-    # Team form
-    drivers = []
-    wpd = row.get("win_pct_diff") or 0
-    if abs(wpd) > 0.04:
-        drivers.append(
-            f"{'Local' if wpd > 0 else 'Visitante'} con mejor win% temporada ({home} {row.get('home_win_pct', float('nan')):.3f} vs {away} {row.get('away_win_pct', float('nan')):.3f})"
+    sp_favors = None  # "home" | "away" | None
+    if pd.notna(h_era) and pd.notna(a_era):
+        if float(h_era) + 0.25 < float(a_era):
+            sp_favors = "home"
+            lines.append(
+                f"  → Mejor ERA de abridor: {hs} ({home}, {he}) vs {as_} ({away}, {ae}). "
+                f"Ventaja de pitcheo inicial para {home}."
+            )
+        elif float(a_era) + 0.25 < float(h_era):
+            sp_favors = "away"
+            lines.append(
+                f"  → Mejor ERA de abridor: {as_} ({away}, {ae}) vs {hs} ({home}, {he}). "
+                f"Ventaja de pitcheo inicial para {away}."
+            )
+        else:
+            lines.append("  → ERAs de abridores similares (sin ventaja clara de SP).")
+    elif pd.notna(h_era) or pd.notna(a_era):
+        lines.append("  → Solo un abridor tiene ERA disponible; el otro es TBD/n/d (dato incompleto).")
+    else:
+        lines.append("  → Sin ERA de abridores en el dataset (ambos n/d o TBD).")
+
+    # Si el pick NO coincide con mejor SP, decirlo claro
+    if sp_favors == "home" and winner == away:
+        lines.append(
+            f"  ⚡ IMPORTANTE: el abridor favorece a {home}, pero el pick es {away}. "
+            f"El modelo se apoya en otros factores (forma, win%, bullpen, lesiones, parque, lineup), no en el SP."
         )
-    fd = row.get("form_diff") or 0
-    if abs(fd) >= 2:
-        drivers.append(f"Forma L10 favorece a {home if fd > 0 else away} (diff {fd:+.0f} W)")
-    rdd = row.get("run_diff_diff") or 0
-    if abs(rdd) > 25:
-        drivers.append(f"Run differential favorece a {home if rdd > 0 else away}")
+    elif sp_favors == "away" and winner == home:
+        lines.append(
+            f"  ⚡ IMPORTANTE: el abridor favorece a {away}, pero el pick es {home}. "
+            f"El modelo se apoya en otros factores (forma, win%, bullpen, lesiones, parque, lineup), no en el SP."
+        )
+    elif sp_favors and ((sp_favors == "home" and winner == home) or (sp_favors == "away" and winner == away)):
+        lines.append(f"  ✓ El pick {winner} está alineado con la ventaja de abridor.")
 
     h_qs, a_qs = row.get("home_sp_qs_l10"), row.get("away_sp_qs_l10")
-    if pd.notna(h_qs) and pd.notna(a_qs) and abs(h_qs - a_qs) > 0.12:
-        drivers.append(
-            f"Quality-start rate reciente: {hs} {h_qs:.0%} vs {as_} {a_qs:.0%}"
+    if pd.notna(h_qs) and pd.notna(a_qs) and abs(float(h_qs) - float(a_qs)) >= 0.15:
+        lines.append(
+            f"  Quality starts L10: {hs} {float(h_qs)*100:.0f}% vs {as_} {float(a_qs)*100:.0f}%."
         )
 
-    # Park
-    pf = row.get("park_factor")
-    if pd.notna(pf) and abs(pf - 1.0) > 0.06:
-        tag = "ofensivo" if pf > 1 else "defensivo/pitcher"
-        lines.append(f"Parque: factor {pf:.3f} ({tag})")
-
-    # IL
-    hb = row.get("home_burden_short") or 0
-    ab = row.get("away_burden_short") or 0
-    if abs(hb - ab) >= 1.5:
-        worse = home if hb > ab else away
+    # --- Drivers de equipo ---
+    drivers = []
+    wpd = row.get("win_pct_diff") or 0
+    try:
+        wpd = float(wpd)
+    except Exception:
+        wpd = 0
+    hwp, awp = row.get("home_win_pct"), row.get("away_win_pct")
+    if abs(wpd) > 0.03 and pd.notna(hwp) and pd.notna(awp):
         drivers.append(
-            f"Más lesiones corto plazo en {worse} (burden {max(hb,ab):.1f} vs {min(hb,ab):.1f})"
+            f"Win% temporada: {home} {float(hwp):.3f} vs {away} {float(awp):.3f} "
+            f"(favorece a {home if wpd > 0 else away})"
+        )
+    fd = row.get("form_diff") or 0
+    try:
+        fd = float(fd)
+    except Exception:
+        fd = 0
+    if abs(fd) >= 2:
+        drivers.append(f"Forma últimos 10: favorece a {home if fd > 0 else away} (diff {fd:+.0f} W)")
+    rdd = row.get("run_diff_diff") or 0
+    try:
+        rdd = float(rdd)
+    except Exception:
+        rdd = 0
+    if abs(rdd) > 20:
+        drivers.append(f"Run differential de temporada favorece a {home if rdd > 0 else away} (diff {rdd:+.0f})")
+
+    # OPS lineups
+    hops, aops = row.get("home_lineup_ops"), row.get("away_lineup_ops")
+    if pd.notna(hops) and pd.notna(aops) and abs(float(hops) - float(aops)) >= 0.03:
+        drivers.append(
+            f"OPS lineup: {home} {float(hops):.3f} vs {away} {float(aops):.3f} "
+            f"(bateo favorece a {home if float(hops) > float(aops) else away})"
         )
 
     # Bullpen residual
-    bp = row.get("bp_residual_diff")
-    if pd.notna(bp) and abs(bp) > 0.4:
+    for key, label in (
+        ("bullpen_residual_home", home),
+        ("bullpen_residual_away", away),
+    ):
+        pass
+    hb, ab = row.get("home_bullpen_residual"), row.get("away_bullpen_residual")
+    if hb is None:
+        hb = row.get("bullpen_residual_home")
+    if ab is None:
+        ab = row.get("bullpen_residual_away")
+    if pd.notna(hb) and pd.notna(ab) and abs(float(hb) - float(ab)) >= 0.4:
         drivers.append(
-            f"Bullpen proxy: {'local permitiendo de más' if bp > 0 else 'visitante permitiendo de más'} (residual {bp:+.2f})"
+            f"Bullpen (proxy residual): {home} {float(hb):+.2f} vs {away} {float(ab):+.2f}"
         )
 
-    # Lineup OPS
-    h_ops = row.get("home_lineup_ops")
-    a_ops = row.get("away_lineup_ops")
-    lu_status = row.get("lineup_status") or "missing"
-    if pd.notna(h_ops) and pd.notna(a_ops):
-        drivers.append(f"OPS lineup: {home} {h_ops:.3f} vs {away} {a_ops:.3f}")
-        if abs(h_ops - a_ops) >= 0.040:
-            drivers.append(
-                f"Ventaja ofensiva de lineup → {home if h_ops > a_ops else away}"
-            )
+    # IL burden
+    hil, ail = row.get("home_il_burden"), row.get("away_il_burden")
+    if hil is None:
+        hil = row.get("il_burden_home")
+    if ail is None:
+        ail = row.get("il_burden_away")
+    if pd.notna(hil) and pd.notna(ail) and abs(float(hil) - float(ail)) >= 1.5:
+        worse = home if float(hil) > float(ail) else away
+        drivers.append(
+            f"Carga de lesiones (IL): más afectada {worse} "
+            f"({home} {float(hil):.1f} vs {away} {float(ail):.1f})"
+        )
+
+    # Rest
+    hr, ar = row.get("home_rest"), row.get("away_rest")
+    if pd.notna(hr) and pd.notna(ar) and abs(float(hr) - float(ar)) >= 1:
+        drivers.append(f"Descanso: {home} {float(hr):.0f}d vs {away} {float(ar):.0f}d")
 
     if drivers:
-        lines.append("Factores a favor del pick / contexto: " + "; ".join(drivers[:6]))
+        lines.append("Factores a favor del pick / contexto:")
+        for d in drivers[:8]:
+            lines.append(f"  • {d}")
     else:
-        lines.append("Factores: partido muy equilibrado en win%, forma y abridores.")
+        lines.append(
+            "Factores: no hay un driver dominante en win%, forma, run diff, OPS o bullpen; "
+            "el modelo separa poco a los equipos (partido equilibrado)."
+        )
 
-    # Lineups 1-9
-    lines.append(f"Lineup {home} [{lu_status}]: {_fmt_lineup(row.get('home_lineup_names'))}")
-    lines.append(f"Lineup {away} [{lu_status}]: {_fmt_lineup(row.get('away_lineup_names'))}")
-    if lu_status != "confirmed":
-        lines.append("📋 Lineups aún no oficiales; se actualizarán en el refresh de la tarde cuando MLB los publique.")
+    # Park
+    pf = row.get("park_factor") or row.get("park_factor_runs")
+    vn = row.get("venue_name") or ""
+    if pd.notna(pf):
+        kind = "ofensivo" if float(pf) > 1.02 else "defensivo" if float(pf) < 0.98 else "neutral"
+        lines.append(f"Parque: {vn} factor {float(pf):.3f} ({kind})")
+    elif vn:
+        lines.append(f"Parque: {vn}")
 
-    # Risks
+    # Lineups
+    h_lu = str(row.get("home_lineup_status") or row.get("lineup_status_home") or "projected_or_missing")
+    a_lu = str(row.get("away_lineup_status") or row.get("lineup_status_away") or "projected_or_missing")
+    lines.append(f"Lineup {home} [{h_lu}]")
+    lines.append(f"Lineup {away} [{a_lu}]")
+    if "confirm" not in h_lu.lower() or "confirm" not in a_lu.lower():
+        lines.append("📋 Lineups aún no oficiales; se actualizarán cuando MLB los publique.")
+
+    # Resumen final honesto
+    lines.append(
+        f"Resumen: pick {winner} con {max(home_prob, 1-home_prob)*100:.1f}% ({conf}). "
+        + (
+            f"Abridor a favor del pick."
+            if (sp_favors == "home" and winner == home) or (sp_favors == "away" and winner == away)
+            else (
+                f"Abridor NO es el motivo principal del pick."
+                if sp_favors
+                else "Abridores sin ventaja clara o con datos incompletos."
+            )
+        )
+    )
+
     risks = []
     if conf == "LOW":
         risks.append("edge estadístico pequeño")
     if (row.get("home_rest") or 3) <= 1 or (row.get("away_rest") or 3) <= 1:
         risks.append("posible fatiga por poco descanso")
-    if lu_status != "confirmed":
+    if "confirm" not in str(h_lu).lower() or "confirm" not in str(a_lu).lower():
         risks.append("lineup no confirmado")
+    if hs in ("TBD", "?", "nan") or as_ in ("TBD", "?", "nan") or str(hs).lower() == "nan" or str(as_).lower() == "nan":
+        risks.append("abridor TBD o dato faltante")
     if risks:
         lines.append("Riesgos: " + "; ".join(risks))
 

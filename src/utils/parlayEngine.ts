@@ -151,63 +151,49 @@ export function honestyFor(p: number, legs: ParlayLeg[]): {
 }
 
 /**
- * Anti-longshot:
- * - TOP4_SAFE: solo favoritos claros (p≥58%, justa americana ≤ -130)
- * - Nada de underdogs / cuotas altas (+money)
- * - REGLA DURA DEL USUARIO: nunca jugar equipos con cuota justa PEOR que -130
- *   (es decir, americana > -130, ej. -110, -120, o positiva). Esto aplica
- *   SIEMPRE, sin importar la estrategia elegida — no es negociable ni se
- *   afloja para poder completar 4 piernas (ver ABSOLUTE_MAX_FAIR_AMERICAN).
+ * Filtro de cuotas (regla del usuario):
+ * - NO jugar favoritos muy cargados: americana < -130 (ej. -140, -150, -200) → pagan poco.
+ * - NO jugar underdogs largos: americana > +110.
+ * - Rango permitido aproximado: -130 ≤ justa ≤ +110 (mejor zona -130 a -105).
+ * - min_leg_prob evita coin-flips extremos; max_leg_prob evita super-favoritos.
  */
-const ABSOLUTE_MAX_FAIR_AMERICAN = -130;
+const HEAVY_FAV_CUTOFF = -130; // más negativo = más favorito = RECHAZAR
+const MAX_DOG_AMERICAN = 110; // underdog más largo que +110 = RECHAZAR
 
 export function buildKalPick4(
   games: GamePrediction[],
   date: string,
   strategy: KalParlaySlip['strategy'] = 'TOP4_SAFE',
-  opts?: { min_leg_prob?: number; max_fair_american?: number }
+  opts?: { min_leg_prob?: number; max_leg_prob?: number }
 ): KalParlaySlip | null {
-  // max_fair_american: si es negativo, exige favorito al menos tan fuerte (ej. -130)
-  // si es positivo, permite underdogs hasta ese + (legado)
+  // p≈0.565 → -130; p≈0.67 → -200. Cap en 0.565 para no meter -140/-200.
   const minP =
     opts?.min_leg_prob ??
-    (strategy === 'TOP4_SAFE' ? 0.58 : strategy === 'TOP4_HIGH_ONLY' ? 0.55 : 0.52);
-  // El piso de -130 NUNCA se afloja, sin importar qué estrategia o `opts` se pase.
-  // Antes esto caía a -110 para estrategias que no fueran TOP4_SAFE — eso
-  // dejaba pasar favoritos débiles/cuotas altas que el usuario pidió excluir.
-  const requestedAm = opts?.max_fair_american ?? (strategy === 'TOP4_SAFE' ? -130 : -110);
-  const maxAm = Math.min(requestedAm, ABSOLUTE_MAX_FAIR_AMERICAN);
+    (strategy === 'TOP4_SAFE' ? 0.52 : strategy === 'TOP4_HIGH_ONLY' ? 0.53 : 0.50);
+  const maxP = opts?.max_leg_prob ?? 0.565; // ~ -130; por encima = favorito demasiado corto
 
   let pool = [...games];
   if (strategy === 'TOP4_HIGH_ONLY') {
     pool = pool.filter((g) => g.conf === 'HIGH' || g.conf === 'MEDIUM');
   }
 
-  const passes = (g: GamePrediction, relax: number) => {
+  const passes = (g: GamePrediction, relaxProb: number) => {
     const p = legProb(g);
-    if (p < minP - relax) return false;
+    if (p < minP - relaxProb) return false;
+    if (p > maxP + relaxProb * 0.5) return false; // demasiado favorito
     const am = fairAmericanNum(p);
-    // Solo favoritos: americana debe ser <= maxAm cuando maxAm es negativo (ej. -130)
-    // o <= maxAm cuando maxAm es positivo (legado +110)
-    if (maxAm <= 0) {
-      // favorito mínimo: am más negativo o igual que maxAm ( -150 <= -130 OK; -120 no)
-      if (am > maxAm) return false; // -120 > -130 → fuera
-      if (am >= 100) return false; // underdog explícito
-    } else {
-      if (am > maxAm) return false;
-    }
+    // Favorito pesado (paga poco): -150, -200 → am < -130
+    if (am < HEAVY_FAV_CUTOFF) return false;
+    // Underdog largo
+    if (am > MAX_DOG_AMERICAN) return false;
     return true;
   };
 
   pool = pool.filter((g) => passes(g, 0));
 
   if (pool.length < 4) {
-    // Único relajo permitido: -0.02 en probabilidad mínima del modelo.
-    // El piso de cuota (maxAm, nunca peor que -130) NO se relaja — si no
-    // hay 4 partidos que cumplan -130 hoy, no se arma el parlay. Antes
-    // esto aflojaba la cuota +15/+20 puntos para forzar las 4 piernas,
-    // que es exactamente lo que colaba cuotas altas sin avisar.
-    pool = [...games].filter((g) => passes(g, 0.02));
+    // relajo suave de prob, NUNCA de favoritos -140/-200
+    pool = [...games].filter((g) => passes(g, 0.015));
   }
   if (pool.length < 4) return null;
 
@@ -242,7 +228,7 @@ export function buildKalPick4(
     status: 'OPEN',
     units_risked: 1,
     min_leg_prob: minP,
-    max_fair_american: maxAm,
+    max_fair_american: HEAVY_FAV_CUTOFF, // piso: no más favorito que -130
   };
 }
 

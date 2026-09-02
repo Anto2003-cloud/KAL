@@ -44,13 +44,14 @@ export function signalForPick(
     return { pick, tickets_on_pick: null, fade: false, label: 'Público: n/d' };
   }
   const fade = tickets >= threshold;
+  const src = split.source === 'odds_proxy' ? 'proxy casas' : split.source || 'feed';
   return {
     pick,
     tickets_on_pick: tickets,
     fade,
     label: fade
-      ? `Público ${tickets.toFixed(0)}% al pick → FADE`
-      : `Público ${tickets.toFixed(0)}% al pick`,
+      ? `${tickets.toFixed(0)}% (${src}) al pick → FADE`
+      : `${tickets.toFixed(0)}% (${src}) al pick`,
   };
 }
 

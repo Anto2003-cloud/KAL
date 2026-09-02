@@ -93,9 +93,9 @@ export const PublicSplitsPanel: React.FC<Props> = ({ games, splits, onSaved }) =
         className="w-full flex items-center justify-between px-4 py-3 text-left"
       >
         <div>
-          <div className="text-sm font-semibold text-white">Público ≥90% (FADE)</div>
+          <div className="text-sm font-semibold text-white">Público ≥90% (FADE) — automático</div>
           <div className="text-[11px] text-neutral-500">
-            Pega el % de tickets de Action Network. Si el pick tiene ≥90%, KAL lo evita en parlay.
+            Con ODDS_API_KEY KAL estima el lado “público” por cuántas casas lo dan favorito. Opcional: override manual abajo.
           </div>
         </div>
         <span className="text-neutral-500 text-xs">{open ? '▲' : '▼'}</span>

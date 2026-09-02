@@ -7,6 +7,8 @@
 export interface MarketLine {
   home: string;
   away: string;
+  home_abbr?: string;
+  away_abbr?: string;
   home_decimal?: number;
   away_decimal?: number;
   book?: string;
@@ -56,8 +58,9 @@ export function valueForPick(
   }
   const implied = impliedFromDecimal(market_decimal);
   const edge = model_prob - implied;
-  // value si el modelo da más prob que el mercado (edge > 2%)
   const has_value = edge >= 0.02;
+  const bookTag = market?.book ? ` · ${market.book}` : '';
+  const decStr = market_decimal.toFixed(2);
   return {
     pick,
     model_prob,
@@ -66,10 +69,10 @@ export function valueForPick(
     edge,
     has_value,
     label: has_value
-      ? `VALUE +${(edge * 100).toFixed(1)}% vs casa`
+      ? `Casa ${decStr}x · VALUE +${(edge * 100).toFixed(1)}%${bookTag}`
       : edge > -0.02
-        ? 'Casi alineado con el mercado'
-        : `Sin value (${(edge * 100).toFixed(1)}% vs casa)`,
+        ? `Casa ${decStr}x · alineado${bookTag}`
+        : `Casa ${decStr}x · sin value (${(edge * 100).toFixed(1)}%)${bookTag}`,
   };
 }
 
@@ -99,6 +102,8 @@ export async function fetchMlbMoneylineOdds(_dateIso: string): Promise<MarketLin
     return data.lines.map((l: any) => ({
       home: l.home,
       away: l.away,
+      home_abbr: l.home_abbr,
+      away_abbr: l.away_abbr,
       home_decimal: l.home_decimal,
       away_decimal: l.away_decimal,
       book: l.book,
@@ -116,17 +121,31 @@ export function findMarketLine(
   homeName?: string,
   awayName?: string
 ): MarketLine | null {
-  const h = (homeName || homeAbbr || '').toLowerCase();
-  const a = (awayName || awayAbbr || '').toLowerCase();
+  const ha = (homeAbbr || '').toUpperCase();
+  const aa = (awayAbbr || '').toUpperCase();
+  // 1) match por abbr del API
+  for (const L of lines) {
+    if (L.home_abbr && L.away_abbr) {
+      if (L.home_abbr.toUpperCase() === ha && L.away_abbr.toUpperCase() === aa) {
+        if (L.home_decimal && L.away_decimal) return L;
+      }
+    }
+  }
+  // 2) match por nombre completo
+  const h = `${homeName || ''} ${homeAbbr || ''}`.toLowerCase();
+  const a = `${awayName || ''} ${awayAbbr || ''}`.toLowerCase();
   for (const L of lines) {
     const lh = (L.home || '').toLowerCase();
     const la = (L.away || '').toLowerCase();
-    if (
-      (lh.includes(h) || h.includes(lh.slice(0, 4)) || lh.includes(homeAbbr.toLowerCase())) &&
-      (la.includes(a) || a.includes(la.slice(0, 4)) || la.includes(awayAbbr.toLowerCase()))
-    ) {
-      return L;
-    }
+    const homeOk =
+      lh.includes((homeName || '').toLowerCase()) ||
+      lh.includes(ha.toLowerCase()) ||
+      (homeName && lh.includes(homeName.toLowerCase().split(' ').pop() || ''));
+    const awayOk =
+      la.includes((awayName || '').toLowerCase()) ||
+      la.includes(aa.toLowerCase()) ||
+      (awayName && la.includes(awayName.toLowerCase().split(' ').pop() || ''));
+    if (homeOk && awayOk && L.home_decimal && L.away_decimal) return L;
   }
   return null;
 }

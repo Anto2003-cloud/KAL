@@ -426,77 +426,146 @@ def api_backfill(
 
 @app.get("/api/odds")
 def api_odds():
-    """Proxy opcional The Odds API (ODDS_API_KEY en Railway)."""
+    """Proxy The Odds API: moneylines de casas US (FanDuel, DK, etc.)."""
     key = os.environ.get("ODDS_API_KEY") or os.environ.get("THE_ODDS_API_KEY") or ""
     if not key:
-        return {"configured": False, "lines": [], "note": "Define ODDS_API_KEY en Railway o VITE_ODDS_API_KEY en Vercel"}
+        return {
+            "configured": False,
+            "lines": [],
+            "note": "Define ODDS_API_KEY en Railway",
+        }
+    # Preferir casas conocidas (orden = prioridad)
+    preferred = [
+        "fanduel",
+        "draftkings",
+        "betmgm",
+        "williamhill_us",
+        "pointsbetus",
+        "betrivers",
+        "unibet_us",
+        "bovada",
+    ]
+    # nombres API → abbr MLB
+    name_to_abbr = {
+        "arizona diamondbacks": "ARI",
+        "atlanta braves": "ATL",
+        "baltimore orioles": "BAL",
+        "boston red sox": "BOS",
+        "chicago cubs": "CHC",
+        "chicago white sox": "CWS",
+        "cincinnati reds": "CIN",
+        "cleveland guardians": "CLE",
+        "colorado rockies": "COL",
+        "detroit tigers": "DET",
+        "houston astros": "HOU",
+        "kansas city royals": "KC",
+        "los angeles angels": "LAA",
+        "los angeles dodgers": "LAD",
+        "miami marlins": "MIA",
+        "milwaukee brewers": "MIL",
+        "minnesota twins": "MIN",
+        "new york mets": "NYM",
+        "new york yankees": "NYY",
+        "oakland athletics": "OAK",
+        "athletics": "OAK",
+        "philadelphia phillies": "PHI",
+        "pittsburgh pirates": "PIT",
+        "san diego padres": "SD",
+        "san francisco giants": "SF",
+        "seattle mariners": "SEA",
+        "st. louis cardinals": "STL",
+        "st louis cardinals": "STL",
+        "tampa bay rays": "TB",
+        "texas rangers": "TEX",
+        "toronto blue jays": "TOR",
+        "washington nationals": "WSH",
+    }
+
+    def abbr(name: str | None) -> str | None:
+        if not name:
+            return None
+        return name_to_abbr.get(name.strip().lower())
+
     try:
         import requests
+
         url = (
             "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/"
             f"?apiKey={key}&regions=us&markets=h2h&oddsFormat=decimal"
         )
-        r = requests.get(url, timeout=20)
+        r = requests.get(url, timeout=25)
         r.raise_for_status()
         data = r.json()
         lines = []
         for g in data if isinstance(data, list) else []:
-            book = (g.get("bookmakers") or [{}])[0]
-            market = next((m for m in (book.get("markets") or []) if m.get("key") == "h2h"), None)
-            outcomes = (market or {}).get("outcomes") or []
             home, away = g.get("home_team"), g.get("away_team")
+            books = g.get("bookmakers") or []
+            # elegir book preferido con mercado h2h válido
+            chosen = None
+            for pref in preferred:
+                for b in books:
+                    if (b.get("key") or "").lower() == pref:
+                        m = next(
+                            (x for x in (b.get("markets") or []) if x.get("key") == "h2h"),
+                            None,
+                        )
+                        outs = (m or {}).get("outcomes") or []
+                        if len(outs) >= 2:
+                            chosen = b
+                            break
+                if chosen:
+                    break
+            if not chosen and books:
+                # fallback: primer book con h2h
+                for b in books:
+                    m = next(
+                        (x for x in (b.get("markets") or []) if x.get("key") == "h2h"),
+                        None,
+                    )
+                    if (m or {}).get("outcomes"):
+                        chosen = b
+                        break
+            if not chosen:
+                lines.append(
+                    {
+                        "home": home,
+                        "away": away,
+                        "home_abbr": abbr(home),
+                        "away_abbr": abbr(away),
+                        "home_decimal": None,
+                        "away_decimal": None,
+                        "book": None,
+                    }
+                )
+                continue
+            market = next(
+                (m for m in (chosen.get("markets") or []) if m.get("key") == "h2h"),
+                None,
+            )
+            outcomes = (market or {}).get("outcomes") or []
             ho = next((o for o in outcomes if o.get("name") == home), None)
             ao = next((o for o in outcomes if o.get("name") == away), None)
-            lines.append({
-                "home": home,
-                "away": away,
-                "home_decimal": (ho or {}).get("price"),
-                "away_decimal": (ao or {}).get("price"),
-                "book": book.get("title"),
-            })
-        return {"configured": True, "count": len(lines), "lines": lines}
+            lines.append(
+                {
+                    "home": home,
+                    "away": away,
+                    "home_abbr": abbr(home),
+                    "away_abbr": abbr(away),
+                    "home_decimal": (ho or {}).get("price"),
+                    "away_decimal": (ao or {}).get("price"),
+                    "book": chosen.get("title") or chosen.get("key"),
+                }
+            )
+        return {
+            "configured": True,
+            "count": len(lines),
+            "with_prices": sum(1 for L in lines if L.get("home_decimal")),
+            "lines": lines,
+            "source": "the-odds-api",
+            "preferred_books": preferred[:4],
+        }
     except Exception as e:
         return {"configured": True, "error": str(e), "lines": []}
-
-
-
-@app.get("/api/backup")
-def api_backup():
-    """JSON descargable: panel + graded (para no perder historial)."""
-    panel = _load_panel()
-    try:
-        rows = _load_history()
-    except Exception:
-        rows = []
-    return {
-        "exported_at": datetime.now(timezone.utc).isoformat(),
-        "panel": panel,
-        "history_count": len(rows),
-        "history": rows[:2000],
-    }
-
-
-@app.post("/api/notify/test")
-def api_notify_test(x_kal_secret: str | None = Header(None)):
-    _check_secret(x_kal_secret)
-    return _send_telegram("KAL test: alertas OK")
-
-
-def _send_telegram(text: str) -> dict:
-    token = os.environ.get("TELEGRAM_BOT_TOKEN") or ""
-    chat = os.environ.get("TELEGRAM_CHAT_ID") or ""
-    if not token or not chat:
-        return {"sent": False, "reason": "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID no configurados"}
-    try:
-        import requests
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat, "text": text[:3500]},
-            timeout=15,
-        )
-        return {"sent": r.ok, "status": r.status_code}
-    except Exception as e:
-        return {"sent": False, "error": str(e)}
 
 
 @app.get("/api/preds")

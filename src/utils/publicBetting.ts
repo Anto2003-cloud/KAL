@@ -1,3 +1,4 @@
+import type { GamePrediction, ConfidenceLevel } from '../types';
 /**
  * Público / splits de apuestas.
  * - Con feed real (API): tickets % y money % por equipo.
@@ -89,4 +90,70 @@ export async function fetchPublicSplits(): Promise<PublicSplit[]> {
   } catch {
     return [];
   }
+}
+
+
+/**
+ * Ajusta el pick del modelo cuando el público (≥90% tickets/proxy) va al mismo lado.
+ * - Baja la prob del pick (más conservador)
+ * - Puede bajar conf HIGH→MEDIUM / MEDIUM→LOW
+ * - No invierte el ganador salvo edge muy pequeño tras el castigo
+ */
+export function applyPublicFadeToPrediction(
+  pred: GamePrediction,
+  splits: PublicSplit[],
+  threshold = PUBLIC_FADE_THRESHOLD
+): GamePrediction {
+  if (!splits?.length) return pred;
+  const split = findPublicSplit(splits, pred.home, pred.away);
+  const sig = signalForPick(split, pred.winner, pred.home, pred.away, threshold);
+  if (!sig.fade || sig.tickets_on_pick == null) return pred;
+
+  const tickets = sig.tickets_on_pick;
+  // Castigo: 90% → -3pp, 95% → -4.5pp, 100% → -6pp (cap)
+  const penalty = Math.min(0.06, 0.03 + ((tickets - 90) / 10) * 0.03);
+
+  let home_p = pred.home_p;
+  let away_p = pred.away_p;
+  const pickHome = pred.winner === pred.home;
+
+  if (pickHome) {
+    home_p = Math.max(0.35, home_p - penalty);
+    away_p = 1 - home_p;
+  } else {
+    away_p = Math.max(0.35, away_p - penalty);
+    home_p = 1 - away_p;
+  }
+
+  // Ganador tras ajuste
+  let winner = home_p >= away_p ? pred.home : pred.away;
+  let conf: ConfidenceLevel = pred.conf;
+  const top = Math.max(home_p, away_p);
+  if (top < 0.55) conf = 'LOW';
+  else if (top < 0.6 && conf === 'HIGH') conf = 'MEDIUM';
+  else if (top < 0.58 && conf === 'MEDIUM') conf = 'LOW';
+
+  const note =
+    `\n📉 FADE público: ${tickets.toFixed(0)}% al pick original (${pred.winner}). ` +
+    `Prob ajustada −${(penalty * 100).toFixed(1)} pp (${sig.label}).`;
+
+  return {
+    ...pred,
+    home_p,
+    away_p,
+    winner,
+    conf,
+    explanation: (pred.explanation || '') + note,
+    public_fade: true,
+    public_tickets_on_original: tickets,
+    original_winner: pred.winner,
+  } as GamePrediction;
+}
+
+export function applyPublicFadeToList(
+  preds: GamePrediction[],
+  splits: PublicSplit[]
+): GamePrediction[] {
+  if (!splits?.length) return preds;
+  return preds.map((p) => applyPublicFadeToPrediction(p, splits));
 }

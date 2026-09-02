@@ -103,6 +103,10 @@ export interface FactorBreakdown {
 }
 
 export interface GamePrediction {
+  public_fade?: boolean;
+  public_tickets_on_original?: number;
+  original_winner?: string;
+
   game_pk: number;
   game_date?: string;
   game_time?: string;

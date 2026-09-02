@@ -11,7 +11,7 @@ import { ParlayLab } from './components/ParlayLab';
 import type { KalParlaySlip } from './utils/parlayEngine';
 import { fetchLivePreds, fetchLivePanel, fetchLiveStatus, isLiveConfigured, fetchLiveHistory } from './data/liveApi';
 import { fetchMlbMoneylineOdds, findMarketLine, type MarketLine } from './utils/marketOdds';
-import { fetchPublicSplits, type PublicSplit } from './utils/publicBetting';
+import { fetchPublicSplits, applyPublicFadeToList, type PublicSplit } from './utils/publicBetting';
 import { PublicSplitsPanel } from './components/PublicSplitsPanel';
 import { autoGradeParlays } from './utils/parlayEngine';
 import {
@@ -192,7 +192,11 @@ export default function App() {
       ...Object.keys(RAW_PREDICTIONS),
     ])
   ).sort().reverse();
-  const currentPredictions = (livePreds && livePreds.length ? livePreds : (RAW_PREDICTIONS[activeDate] || [])) as GamePrediction[];
+  const currentPredictionsRaw = (livePreds && livePreds.length ? livePreds : (RAW_PREDICTIONS[activeDate] || [])) as GamePrediction[];
+  const currentPredictions = useMemo(
+    () => applyPublicFadeToList(currentPredictionsRaw, publicSplits),
+    [currentPredictionsRaw, publicSplits]
+  );
   const panelData = livePanel || TRACKING_PANEL;
 
   // Filtered predictions

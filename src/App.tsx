@@ -12,6 +12,7 @@ import type { KalParlaySlip } from './utils/parlayEngine';
 import { fetchLivePreds, fetchLivePanel, fetchLiveStatus, isLiveConfigured, fetchLiveHistory } from './data/liveApi';
 import { fetchMlbMoneylineOdds, findMarketLine, type MarketLine } from './utils/marketOdds';
 import { fetchPublicSplits, type PublicSplit } from './utils/publicBetting';
+import { PublicSplitsPanel } from './components/PublicSplitsPanel';
 import { autoGradeParlays } from './utils/parlayEngine';
 import {
   RAW_PREDICTIONS,
@@ -36,7 +37,14 @@ export default function App() {
   const [livePreds, setLivePreds] = useState<GamePrediction[] | null>(null);
   const [livePanel, setLivePanel] = useState<typeof TRACKING_PANEL | null>(null);
   const [marketLines, setMarketLines] = useState<MarketLine[]>([]);
-  const [publicSplits, setPublicSplits] = useState<PublicSplit[]>([]);
+  const [publicSplits, setPublicSplits] = useState<PublicSplit[]>(() => {
+    try {
+      const raw = localStorage.getItem('kal_public_splits');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
   const [seasonPhase, setSeasonPhase] = useState<string>('regular');
 
     const [parlayHistory, setParlayHistory] = useState<KalParlaySlip[]>(() => {
@@ -318,6 +326,7 @@ export default function App() {
 
         {/* PRONÓSTICOS TAB */}
         {activeTab === 'preds' && (
+
           <div className="space-y-4">
             <div className={`rounded-xl border px-4 py-2.5 text-[11px] ${liveMode ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-200/90' : 'border-amber-500/20 bg-amber-500/5 text-amber-200/90'}`}>
               <strong className={liveMode ? 'text-emerald-100' : 'text-amber-100'}>
@@ -415,6 +424,12 @@ export default function App() {
 
         {/* PARLAY TAB */}
         {activeTab === 'parlay' && (
+          <div className="space-y-4">
+            <PublicSplitsPanel
+              games={currentPredictions}
+              splits={publicSplits}
+              onSaved={setPublicSplits}
+            />
           <ParlayLab
             games={currentPredictions}
             date={activeDate}

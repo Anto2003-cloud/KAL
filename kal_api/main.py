@@ -427,117 +427,126 @@ def api_backfill(
 
 @app.get("/api/public-splits")
 def api_public_splits():
-    """
-    % de tickets/money del público por partido.
-    Fuentes (en orden):
-      1) SHARP_API_KEY → SharpAPI /api/v1/splits (Pro)
-      2) data/public_splits_manual.json (pegado a mano)
-    Sin fuente: configured=false (no inventamos el 90%).
-    """
-    key = os.environ.get("SHARP_API_KEY") or os.environ.get("SPLITS_API_KEY") or ""
-    name_to_abbr = {
-        "arizona diamondbacks": "ARI", "atlanta braves": "ATL", "baltimore orioles": "BAL",
-        "boston red sox": "BOS", "chicago cubs": "CHC", "chicago white sox": "CWS",
-        "cincinnati reds": "CIN", "cleveland guardians": "CLE", "colorado rockies": "COL",
-        "detroit tigers": "DET", "houston astros": "HOU", "kansas city royals": "KC",
-        "los angeles angels": "LAA", "los angeles dodgers": "LAD", "miami marlins": "MIA",
-        "milwaukee brewers": "MIL", "minnesota twins": "MIN", "new york mets": "NYM",
-        "new york yankees": "NYY", "oakland athletics": "OAK", "athletics": "ATH",
-        "sacramento athletics": "ATH", "philadelphia phillies": "PHI", "pittsburgh pirates": "PIT",
-        "san diego padres": "SD", "san francisco giants": "SF", "seattle mariners": "SEA",
-        "st. louis cardinals": "STL", "st louis cardinals": "STL", "tampa bay rays": "TB",
-        "texas rangers": "TEX", "toronto blue jays": "TOR", "washington nationals": "WSH",
-    }
-
-    def abbr(n):
-        if not n:
-            return None
-        return name_to_abbr.get(str(n).strip().lower())
-
+    """% tickets del público. Action Network (si viene) + manual en volume."""
+    fade_threshold = 90
     splits = []
     source = None
 
-    # 1) SharpAPI
-    if key:
+    # 1) Manual guardado en volume
+    manual_path = DATA / "public_splits_manual.json"
+    if manual_path.exists():
+        try:
+            import json as _json
+            raw = _json.loads(manual_path.read_text(encoding="utf-8"))
+            rows = raw.get("splits") if isinstance(raw, dict) else raw
+            if rows:
+                splits = rows
+                source = "manual"
+        except Exception as e:
+            log.warning("manual splits: %s", e)
+
+    # 2) Action Network scoreboard (gratis; a veces ml_*_public viene null)
+    if not splits:
         try:
             import requests
-            # endpoint genérico; ajustar si el vendor usa otro path
-            url = os.environ.get(
-                "SHARP_SPLITS_URL",
-                "https://api.sharpapi.io/api/v1/splits?sport=mlb",
+            r = requests.get(
+                "https://api.actionnetwork.com/web/v1/scoreboard/mlb",
+                headers={
+                    "User-Agent": "Mozilla/5.0",
+                    "Accept": "application/json",
+                    "Referer": "https://www.actionnetwork.com/mlb/public-betting",
+                },
+                timeout=20,
             )
-            r = requests.get(url, headers={"Authorization": f"Bearer {key}", "X-API-Key": key}, timeout=25)
             if r.ok:
-                data = r.json()
-                rows = data if isinstance(data, list) else data.get("data") or data.get("splits") or []
-                for row in rows:
-                    home = row.get("home_team") or row.get("home") or ""
-                    away = row.get("away_team") or row.get("away") or ""
-                    ha, aa = abbr(home) or row.get("home_abbr"), abbr(away) or row.get("away_abbr")
-                    # tickets %
-                    ht = row.get("home_bet_pct") or row.get("home_tickets_pct") or row.get("home_tickets")
-                    at = row.get("away_bet_pct") or row.get("away_tickets_pct") or row.get("away_tickets")
-                    hm = row.get("home_handle_pct") or row.get("home_money_pct")
-                    am = row.get("away_handle_pct") or row.get("away_money_pct")
-                    # normalize 0-1 → 0-100
-                    def pct(x):
-                        if x is None:
-                            return None
-                        try:
-                            v = float(x)
-                        except Exception:
-                            return None
-                        return v * 100 if v <= 1.0 else v
-                    if ha and aa:
-                        splits.append({
+                games = (r.json() or {}).get("games") or []
+                for g in games:
+                    teams = g.get("teams") or []
+                    if len(teams) < 2:
+                        continue
+                    # AN: teams[0] often away, teams[1] home — verify by id
+                    by_id = {t.get("id"): t for t in teams}
+                    away_t = by_id.get(g.get("away_team_id")) or teams[0]
+                    home_t = by_id.get(g.get("home_team_id")) or teams[1]
+                    ha = (home_t or {}).get("abbr")
+                    aa = (away_t or {}).get("abbr")
+                    if ha == "OAK":
+                        ha = "ATH"
+                    if aa == "OAK":
+                        aa = "ATH"
+                    best = None
+                    for o in g.get("odds") or []:
+                        ht, at = o.get("ml_home_public"), o.get("ml_away_public")
+                        if ht is None and at is None:
+                            continue
+                        hm, am = o.get("ml_home_money"), o.get("ml_away_money")
+                        best = {
                             "home_abbr": ha,
                             "away_abbr": aa,
-                            "home_tickets_pct": pct(ht),
-                            "away_tickets_pct": pct(at),
-                            "home_money_pct": pct(hm),
-                            "away_money_pct": pct(am),
-                            "source": "sharpapi",
-                        })
-                source = "sharpapi"
+                            "home_tickets_pct": float(ht) if ht is not None else None,
+                            "away_tickets_pct": float(at) if at is not None else None,
+                            "home_money_pct": float(hm) if hm is not None else None,
+                            "away_money_pct": float(am) if am is not None else None,
+                            "source": "action_network",
+                            "game_status": g.get("status"),
+                        }
+                        break
+                    if best and (
+                        best.get("home_tickets_pct") is not None
+                        or best.get("away_tickets_pct") is not None
+                    ):
+                        splits.append(best)
+                if splits:
+                    source = "action_network"
         except Exception as e:
-            return {"configured": False, "splits": [], "error": str(e), "note": "SharpAPI falló"}
+            log.warning("action network splits: %s", e)
 
-    # 2) manual JSON on volume/image
-    if not splits:
-        for path in (
-            DATA / "public_splits_manual.json",
-            KAL / "data" / "public_splits_manual.json",
-            Path("/app/seed_kal_data/public_splits_manual.json"),
-        ):
-            if path.exists():
-                try:
-                    import json as _json
-                    rows = _json.loads(path.read_text(encoding="utf-8"))
-                    if isinstance(rows, dict):
-                        rows = rows.get("splits") or []
-                    splits = rows
-                    source = "manual_json"
-                    break
-                except Exception:
-                    pass
+    # 3) SharpAPI opcional
+    key = os.environ.get("SHARP_API_KEY") or ""
+    if not splits and key:
+        return {
+            "configured": False,
+            "splits": [],
+            "fade_threshold": fade_threshold,
+            "note": "SharpAPI key presente pero sin parser activo; usa POST manual",
+        }
 
     if not splits:
         return {
             "configured": False,
             "splits": [],
-            "fade_threshold": 90,
-            "note": "Sin feed de público. Opciones: SHARP_API_KEY (SharpAPI Pro) o archivo public_splits_manual.json",
+            "fade_threshold": fade_threshold,
+            "note": "Sin % público aún. Entra en la web a Parlay/Pronósticos y pega los % (Action Network public betting), o POST /api/public-splits",
         }
 
     return {
         "configured": True,
         "source": source,
         "count": len(splits),
-        "fade_threshold": 90,
-        "rule": "Si ≥90% tickets al pick del modelo → FADE (evitar en parlay / warning en card)",
+        "fade_threshold": fade_threshold,
+        "rule": "tickets >= 90% al pick del modelo → FADE",
         "splits": splits,
     }
 
+
+@app.post("/api/public-splits")
+def api_public_splits_save(
+    payload: dict,
+    x_kal_secret: str | None = Header(None),
+):
+    """Guarda splits manuales en el volume. Body: {\"splits\":[...]}"""
+    _check_secret(x_kal_secret)
+    import json as _json
+    rows = payload.get("splits") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        raise HTTPException(400, "Body debe ser {\"splits\": [ {home_abbr, away_abbr, home_tickets_pct, away_tickets_pct} ]}")
+    DATA.mkdir(parents=True, exist_ok=True)
+    path = DATA / "public_splits_manual.json"
+    path.write_text(
+        _json.dumps({"updated_at": datetime.now(timezone.utc).isoformat(), "splits": rows}, indent=2),
+        encoding="utf-8",
+    )
+    return {"ok": True, "saved": len(rows), "path": str(path)}
 
 
 @app.get("/api/odds")

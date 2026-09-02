@@ -468,6 +468,9 @@ def api_odds():
         "new york yankees": "NYY",
         "oakland athletics": "OAK",
         "athletics": "OAK",
+        "oakland athletics": "OAK",
+        "sacramento athletics": "ATH",
+        "athletics": "ATH",
         "philadelphia phillies": "PHI",
         "pittsburgh pirates": "PIT",
         "san diego padres": "SD",
@@ -501,28 +504,41 @@ def api_odds():
             home, away = g.get("home_team"), g.get("away_team")
             books = g.get("bookmakers") or []
             # elegir book preferido con mercado h2h válido
+            def book_prices(b):
+                m = next(
+                    (x for x in (b.get("markets") or []) if x.get("key") == "h2h"),
+                    None,
+                )
+                outs = (m or {}).get("outcomes") or []
+                if len(outs) < 2:
+                    return None
+                ho = next((o for o in outs if o.get("name") == home), None)
+                ao = next((o for o in outs if o.get("name") == away), None)
+                hd = (ho or {}).get("price")
+                ad = (ao or {}).get("price")
+                if not hd or not ad:
+                    return None
+                # descartar líneas absurdas (partido casi cerrado / basura)
+                if hd < 1.05 or ad < 1.05 or hd > 25 or ad > 25:
+                    return None
+                return hd, ad, b
+
             chosen = None
+            prices = None
             for pref in preferred:
                 for b in books:
-                    if (b.get("key") or "").lower() == pref:
-                        m = next(
-                            (x for x in (b.get("markets") or []) if x.get("key") == "h2h"),
-                            None,
-                        )
-                        outs = (m or {}).get("outcomes") or []
-                        if len(outs) >= 2:
-                            chosen = b
-                            break
+                    if (b.get("key") or "").lower() != pref:
+                        continue
+                    prices = book_prices(b)
+                    if prices:
+                        chosen = b
+                        break
                 if chosen:
                     break
-            if not chosen and books:
-                # fallback: primer book con h2h
+            if not chosen:
                 for b in books:
-                    m = next(
-                        (x for x in (b.get("markets") or []) if x.get("key") == "h2h"),
-                        None,
-                    )
-                    if (m or {}).get("outcomes"):
+                    prices = book_prices(b)
+                    if prices:
                         chosen = b
                         break
             if not chosen:
@@ -538,21 +554,22 @@ def api_odds():
                     }
                 )
                 continue
-            market = next(
-                (m for m in (chosen.get("markets") or []) if m.get("key") == "h2h"),
-                None,
-            )
-            outcomes = (market or {}).get("outcomes") or []
-            ho = next((o for o in outcomes if o.get("name") == home), None)
-            ao = next((o for o in outcomes if o.get("name") == away), None)
+            hd, ad, _b = prices
+            ha, aa = abbr(home), abbr(away)
+            # ATH/OAK dual
+            alts = []
+            if ha in ("ATH", "OAK"):
+                alts.append("OAK" if ha == "ATH" else "ATH")
             lines.append(
                 {
                     "home": home,
                     "away": away,
-                    "home_abbr": abbr(home),
-                    "away_abbr": abbr(away),
-                    "home_decimal": (ho or {}).get("price"),
-                    "away_decimal": (ao or {}).get("price"),
+                    "home_abbr": ha,
+                    "away_abbr": aa,
+                    "home_abbr_alt": alts[0] if alts else None,
+                    "away_abbr_alt": None,
+                    "home_decimal": hd,
+                    "away_decimal": ad,
                     "book": chosen.get("title") or chosen.get("key"),
                 }
             )

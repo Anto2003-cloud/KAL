@@ -474,6 +474,24 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
                   </div>
                   <div className="text-[11px] text-neutral-500">
                     {leg.matchup} · justa {leg.fair_american} ({leg.fair_decimal.toFixed(2)}x)
+                    {(() => {
+                      const line = findMarketLine(
+                        marketLines,
+                        leg.home,
+                        leg.away,
+                        TEAMS_META[leg.home]?.name,
+                        TEAMS_META[leg.away]?.name
+                      );
+                      if (!line) return null;
+                      const isHome = leg.pick === leg.home;
+                      const dec = isHome ? line.home_decimal : line.away_decimal;
+                      if (!dec) return null;
+                      return (
+                        <span className="text-emerald-500/90">
+                          {' '}· casa {dec.toFixed(2)}x{line.book ? ` (${line.book})` : ''}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>

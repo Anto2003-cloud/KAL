@@ -104,6 +104,8 @@ export async function fetchMlbMoneylineOdds(_dateIso: string): Promise<MarketLin
       away: l.away,
       home_abbr: l.home_abbr,
       away_abbr: l.away_abbr,
+      home_abbr_alt: l.home_abbr_alt,
+      away_abbr_alt: l.away_abbr_alt,
       home_decimal: l.home_decimal,
       away_decimal: l.away_decimal,
       book: l.book,
@@ -124,12 +126,25 @@ export function findMarketLine(
   const ha = (homeAbbr || '').toUpperCase();
   const aa = (awayAbbr || '').toUpperCase();
   // 1) match por abbr del API
+  const aliases = (x: string) => {
+    const u = x.toUpperCase();
+    if (u === 'ATH' || u === 'OAK') return ['ATH', 'OAK'];
+    if (u === 'SD' || u === 'SDP') return ['SD', 'SDP'];
+    if (u === 'SF' || u === 'SFG') return ['SF', 'SFG'];
+    if (u === 'TB' || u === 'TBR') return ['TB', 'TBR'];
+    if (u === 'WSH' || u === 'WAS') return ['WSH', 'WAS'];
+    return [u];
+  };
+  const homeSet = new Set(aliases(ha));
+  const awaySet = new Set(aliases(aa));
   for (const L of lines) {
-    if (L.home_abbr && L.away_abbr) {
-      if (L.home_abbr.toUpperCase() === ha && L.away_abbr.toUpperCase() === aa) {
-        if (L.home_decimal && L.away_decimal) return L;
-      }
-    }
+    const lh = (L.home_abbr || '').toUpperCase();
+    const la = (L.away_abbr || '').toUpperCase();
+    const lh2 = ((L as any).home_abbr_alt || '').toUpperCase();
+    const la2 = ((L as any).away_abbr_alt || '').toUpperCase();
+    const homeOk = homeSet.has(lh) || homeSet.has(lh2);
+    const awayOk = awaySet.has(la) || awaySet.has(la2);
+    if (homeOk && awayOk && L.home_decimal && L.away_decimal) return L;
   }
   // 2) match por nombre completo
   const h = `${homeName || ''} ${homeAbbr || ''}`.toLowerCase();

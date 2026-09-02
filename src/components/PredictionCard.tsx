@@ -156,7 +156,15 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
           <span className="font-mono text-[11px] text-neutral-200">{fairLine}</span>
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span className="text-[11px] text-neutral-500">Value vs mercado</span>
+          <span className="text-[11px] text-neutral-500">Cuota casa (moneyline)</span>
+          <span className="font-mono text-[11px] text-neutral-200">
+            {value.market_decimal
+              ? `${value.market_decimal.toFixed(2)}x${marketLine?.book ? ` · ${marketLine.book}` : ''}`
+              : '— sin línea'}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-[11px] text-neutral-500">Value</span>
           <span className={`text-[11px] font-medium ${value.has_value ? 'text-emerald-400' : 'text-neutral-400'}`}>
             {value.label}
           </span>

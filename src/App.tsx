@@ -11,6 +11,7 @@ import { ParlayLab } from './components/ParlayLab';
 import type { KalParlaySlip } from './utils/parlayEngine';
 import { fetchLivePreds, fetchLivePanel, fetchLiveStatus, isLiveConfigured, fetchLiveHistory } from './data/liveApi';
 import { fetchMlbMoneylineOdds, findMarketLine, type MarketLine } from './utils/marketOdds';
+import { fetchPublicSplits, applyPublicFadeToList, type PublicSplit } from './utils/publicBetting';
 import { autoGradeParlays } from './utils/parlayEngine';
 import {
   RAW_PREDICTIONS,
@@ -35,6 +36,7 @@ export default function App() {
   const [livePreds, setLivePreds] = useState<GamePrediction[] | null>(null);
   const [livePanel, setLivePanel] = useState<typeof TRACKING_PANEL | null>(null);
   const [marketLines, setMarketLines] = useState<MarketLine[]>([]);
+  const [publicSplits, setPublicSplits] = useState<PublicSplit[]>([]);
   const [seasonPhase, setSeasonPhase] = useState<string>('regular');
 
     const [parlayHistory, setParlayHistory] = useState<KalParlaySlip[]>(() => {
@@ -94,6 +96,7 @@ export default function App() {
       try {
         const odds = await fetchMlbMoneylineOdds(day);
         if (!cancelled && odds.length) setMarketLines(odds);
+        try { const sp = await fetchPublicSplits(); if (!cancelled && sp.length) setPublicSplits(sp); } catch {}
       } catch {}
       // phase from first pred
       if (preds && preds[0] && (preds[0] as any).season_phase) {
@@ -182,7 +185,11 @@ export default function App() {
       ...Object.keys(RAW_PREDICTIONS),
     ])
   ).sort().reverse();
-  const currentPredictions = (livePreds && livePreds.length ? livePreds : (RAW_PREDICTIONS[activeDate] || [])) as GamePrediction[];
+  const currentPredictionsRaw = (livePreds && livePreds.length ? livePreds : (RAW_PREDICTIONS[activeDate] || [])) as GamePrediction[];
+  const currentPredictions = useMemo(
+    () => applyPublicFadeToList(currentPredictionsRaw, publicSplits),
+    [currentPredictionsRaw, publicSplits]
+  );
   const panelData = livePanel || TRACKING_PANEL;
 
   // Filtered predictions
@@ -414,6 +421,7 @@ export default function App() {
         {activeTab === 'parlay' && (
           <ParlayLab
             games={currentPredictions}
+            publicSplits={publicSplits}
             date={activeDate}
             history={parlayHistory}
             onLockSlip={lockParlaySlip}

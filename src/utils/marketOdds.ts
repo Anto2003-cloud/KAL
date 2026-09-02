@@ -7,6 +7,8 @@
 export interface MarketLine {
   home: string;
   away: string;
+  home_abbr?: string;
+  away_abbr?: string;
   home_decimal?: number;
   away_decimal?: number;
   book?: string;
@@ -99,6 +101,8 @@ export async function fetchMlbMoneylineOdds(_dateIso: string): Promise<MarketLin
     return data.lines.map((l: any) => ({
       home: l.home,
       away: l.away,
+      home_abbr: l.home_abbr,
+      away_abbr: l.away_abbr,
       home_decimal: l.home_decimal,
       away_decimal: l.away_decimal,
       book: l.book,

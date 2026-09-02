@@ -40,3 +40,15 @@ export function formatFairLine(p: number): string {
   if (!Number.isFinite(dec)) return '—';
   return `${am} · ${dec.toFixed(2)}x`;
 }
+
+/** Decimal (1.65) → americana ("-154" / "+150") */
+export function decimalToAmerican(dec: number): string {
+  if (!dec || dec <= 1) return '—';
+  if (dec >= 2) return `+${Math.round((dec - 1) * 100)}`;
+  return `${Math.round(-100 / (dec - 1))}`;
+}
+export function decimalToAmericanNum(dec: number): number | null {
+  if (!dec || dec <= 1) return null;
+  if (dec >= 2) return Math.round((dec - 1) * 100);
+  return Math.round(-100 / (dec - 1));
+}

@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { GamePrediction } from '../types';
 import { findMarketLine, type MarketLine } from '../utils/marketOdds';
+import type { PublicSplit } from '../utils/publicBetting';
+import { findPublicSplit, signalForPick } from '../utils/publicBetting';
+import { decimalToAmerican, decimalToAmericanNum } from '../utils/fairOdds';
 import {
   buildKalPick4,
   computeParlayStats,
@@ -76,13 +79,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
 
   const slip = useMemo(
     () =>
-      buildKalPick4(games, date, effectiveStrategy, {
-        min_leg_prob: effectiveStrategy === 'TOP4_SAFE' ? 0.58 : effectiveStrategy === 'TOP4_HIGH_ONLY' ? 0.55 : 0.52,
-        // Piso duro: nunca peor que -130, sin importar la estrategia (ver
-        // ABSOLUTE_MAX_FAIR_AMERICAN en parlayEngine.ts). Antes decía -110
-        // para estrategias no-Seguras, lo cual ya no aplica.
-        max_fair_american: -130,
-      }),
+      buildKalPick4(games, date, effectiveStrategy, { min_leg_prob: effectiveStrategy === 'TOP4_SAFE' ? 0.50 : 0.48, max_leg_prob: 0.565 }),
     [games, date, effectiveStrategy]
   );
 
@@ -298,7 +295,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
         <div className="flex flex-wrap gap-2">
           {(
             [
-              ['TOP4_SAFE', 'Seguro (≥58% · ≤-130)'],
+              ['TOP4_SAFE', 'Seguro (−130…+180)'],
               ['TOP4_PROB', 'Top 4 prob'],
               ['TOP4_HIGH_ONLY', 'Solo MED/HIGH'],
             ] as const

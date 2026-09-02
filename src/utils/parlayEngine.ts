@@ -165,18 +165,13 @@ export function buildKalPick4(
   games: GamePrediction[],
   date: string,
   strategy: KalParlaySlip['strategy'] = 'TOP4_SAFE',
-  opts?: { min_leg_prob?: number; max_fair_american?: number }
+  opts?: { min_leg_prob?: number; max_leg_prob?: number }
 ): KalParlaySlip | null {
-  // max_fair_american: si es negativo, exige favorito al menos tan fuerte (ej. -130)
-  // si es positivo, permite underdogs hasta ese + (legado)
-  const minP =
-    opts?.min_leg_prob ??
-    (strategy === 'TOP4_SAFE' ? 0.58 : strategy === 'TOP4_HIGH_ONLY' ? 0.55 : 0.52);
-  // El piso de -130 NUNCA se afloja, sin importar qué estrategia o `opts` se pase.
-  // Antes esto caía a -110 para estrategias que no fueran TOP4_SAFE — eso
-  // dejaba pasar favoritos débiles/cuotas altas que el usuario pidió excluir.
-  const requestedAm = opts?.max_fair_american ?? (strategy === 'TOP4_SAFE' ? -130 : -110);
-  const maxAm = Math.min(requestedAm, ABSOLUTE_MAX_FAIR_AMERICAN);
+  // Rango cuotas modelo: no favoritos -140/-200 (pagan poco); min ~50%
+  const HEAVY = -130; // am < -130 = demasiado favorito
+  const MAX_DOG = 180;
+  const minP = opts?.min_leg_prob ?? (strategy === 'TOP4_SAFE' ? 0.5 : 0.48);
+  const maxP = opts?.max_leg_prob ?? 0.565; // ~ -130
 
   let pool = [...games];
   if (strategy === 'TOP4_HIGH_ONLY') {
@@ -186,29 +181,15 @@ export function buildKalPick4(
   const passes = (g: GamePrediction, relax: number) => {
     const p = legProb(g);
     if (p < minP - relax) return false;
+    if (p > maxP + relax * 0.5) return false;
     const am = fairAmericanNum(p);
-    // Solo favoritos: americana debe ser <= maxAm cuando maxAm es negativo (ej. -130)
-    // o <= maxAm cuando maxAm es positivo (legado +110)
-    if (maxAm <= 0) {
-      // favorito mínimo: am más negativo o igual que maxAm ( -150 <= -130 OK; -120 no)
-      if (am > maxAm) return false; // -120 > -130 → fuera
-      if (am >= 100) return false; // underdog explícito
-    } else {
-      if (am > maxAm) return false;
-    }
+    if (am < HEAVY) return false;
+    if (am > MAX_DOG) return false;
     return true;
   };
 
   pool = pool.filter((g) => passes(g, 0));
-
-  if (pool.length < 4) {
-    // Único relajo permitido: -0.02 en probabilidad mínima del modelo.
-    // El piso de cuota (maxAm, nunca peor que -130) NO se relaja — si no
-    // hay 4 partidos que cumplan -130 hoy, no se arma el parlay. Antes
-    // esto aflojaba la cuota +15/+20 puntos para forzar las 4 piernas,
-    // que es exactamente lo que colaba cuotas altas sin avisar.
-    pool = [...games].filter((g) => passes(g, 0.02));
-  }
+  if (pool.length < 4) pool = [...games].filter((g) => passes(g, 0.015));
   if (pool.length < 4) return null;
 
   pool.sort((a, b) => {
@@ -242,7 +223,7 @@ export function buildKalPick4(
     status: 'OPEN',
     units_risked: 1,
     min_leg_prob: minP,
-    max_fair_american: maxAm,
+    max_fair_american: HEAVY,
   };
 }
 
@@ -460,16 +441,18 @@ export function stakeForUserPlan(
   const pct = 0.1;
   const stake = Math.round(bank.current * pct * 100) / 100;
   if (honesty === 'EDGE_DEBIL') {
+    const pctSoft = 0.05;
+    const stakeSoft = Math.round(bank.current * pctSoft * 100) / 100;
     return {
       mode: 'BASE_10',
-      pct: 0,
-      stake: 0,
-      reason: 'Edge débil en día normal.',
+      pct: pctSoft,
+      stake: stakeSoft,
+      reason: 'Edge débil → stake 5%.',
       force_safe_strategy: false,
-      play_advice: 'NO_JUGAR',
-      play_advice_title: 'KAL recomienda: NO JUGAR',
+      play_advice: 'PRECAUCION',
+      play_advice_title: 'KAL recomienda: PRECAUCIÓN (5%)',
       play_advice_detail:
-        'Hoy el parlay es EDGE DÉBIL. Con tu plan del 10% no compensa forzar. Pasa o usa solo un single HIGH en Pronósticos.',
+        'Slip no ideal; puedes jugar 5% y registrar, o pasar.',
     };
   }
   return {

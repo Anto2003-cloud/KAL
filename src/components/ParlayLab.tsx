@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { GamePrediction } from '../types';
 import { findMarketLine, type MarketLine } from '../utils/marketOdds';
-import { decimalToAmerican } from '../utils/fairOdds';
+import { decimalToAmerican, decimalToAmericanNum } from '../utils/fairOdds';
 
 /** Acepta decimal (1.65) o americana (-130 / +150) → decimal */
 function parseOddsInput(raw: string): number | undefined {
@@ -100,14 +100,33 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
   const effectiveStrategy =
     bank.recovery_active && strategy !== 'TOP4_SAFE' ? 'TOP4_SAFE' : strategy;
 
-  const slip = useMemo(
-    () =>
-      buildKalPick4(games, date, effectiveStrategy, {
-        min_leg_prob: effectiveStrategy === 'TOP4_SAFE' ? 0.50 : 0.48,
-        max_leg_prob: 0.565,
-      }),
-    [games, date, effectiveStrategy]
-  );
+  const slip = useMemo(() => {
+    // Filtrar por CUOTA DE CASA (no solo modelo): fuera < -130 o > +180
+    const hasBooks = (marketLines?.length || 0) > 0;
+    const byBook = games.filter((g) => {
+      if (!hasBooks) return true; // sin odds aún → filtro modelo solamente
+      const line = findMarketLine(
+        marketLines,
+        g.home,
+        g.away,
+        TEAMS_META[g.home]?.name,
+        TEAMS_META[g.away]?.name
+      );
+      if (!line) return false;
+      const pickHome = g.home_p >= g.away_p;
+      const dec = pickHome ? line.home_decimal : line.away_decimal;
+      const am = dec ? decimalToAmericanNum(dec) : null;
+      if (am == null) return false;
+      if (am < -130) return false; // -164, -250… fuera
+      if (am > 180) return false;
+      return true;
+    });
+    const pool = effectiveStrategy === 'TOP4_SAFE' && hasBooks ? byBook : games;
+    return buildKalPick4(pool, date, effectiveStrategy, {
+      min_leg_prob: effectiveStrategy === 'TOP4_SAFE' ? 0.50 : 0.48,
+      max_leg_prob: 0.565,
+    });
+  }, [games, date, effectiveStrategy, marketLines]);
 
   const planDecision = useMemo(() => {
     if (!slip) {
@@ -294,7 +313,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
     return (
       <div className="p-8 rounded-2xl border border-white/[0.06] bg-[#18181b] text-center space-y-3">
         <p className="text-sm text-neutral-300">
-          No hay 4 piernas en zona de cuotas −130 a +180 (sin favoritos −140/−200 ni dogs peores que +180).
+          No hay 4 piernas con cuota de CASA entre −130 y +180 (FanDuel/DK). Se excluyen −150/−250 y sin línea.
         </p>
         <p className="text-xs text-neutral-500">
           Rango: −130 … +180. Fuera: −140/−150/−200 (pagan poco) y +200 o más. Prueba “Top 4 prob” o pasa el día.

@@ -410,16 +410,18 @@ export function stakeForUserPlan(
 
   if (recovery) {
     if (honesty === 'EDGE_DEBIL') {
+      const pctR = 0.1; // no 20% si edge débil
+      const stakeR = Math.round(bank.current * pctR * 100) / 100;
       return {
-        mode: 'BLOCKED',
-        pct: 0,
-        stake: 0,
-        reason: 'Recuperación 20% con edge débil: no forzar.',
+        mode: 'RECOVERY_20',
+        pct: pctR,
+        stake: stakeR,
+        reason: 'Recuperación pero edge débil → solo 10%, no 20%.',
         force_safe_strategy: true,
-        play_advice: 'NO_JUGAR',
-        play_advice_title: 'KAL recomienda: NO JUGAR (recuperación)',
+        play_advice: 'PRECAUCION',
+        play_advice_title: 'KAL recomienda: PRECAUCIÓN (10% recovery suave)',
         play_advice_detail:
-          'Venía de un MISS y hoy el slip no es sólido (EDGE DÉBIL). Subir al 20% aquí es peor. Espera un día EDGE_OK o juega solo singles HIGH.',
+          'Venía de un MISS y el slip no es sólido. No subas al 20%. Puedes jugar 10%, registrar resultado, o pasar.',
       };
     }
     const pct = 0.2;
@@ -443,22 +445,24 @@ export function stakeForUserPlan(
     };
   }
 
-  // Base 10%
-  const pct = 0.1;
-  const stake = Math.round(bank.current * pct * 100) / 100;
+  // Base 10% — EDGE_DEBIL ya no bloquea: precautión al 5% para poder jugar y aprender
   if (honesty === 'EDGE_DEBIL') {
+    const pctSoft = 0.05;
+    const stakeSoft = Math.round(bank.current * pctSoft * 100) / 100;
     return {
       mode: 'BASE_10',
-      pct: 0,
-      stake: 0,
-      reason: 'Edge débil en día normal.',
+      pct: pctSoft,
+      stake: stakeSoft,
+      reason: 'Edge débil → stake reducido 5% (puedes jugar y registrar).',
       force_safe_strategy: false,
-      play_advice: 'NO_JUGAR',
-      play_advice_title: 'KAL recomienda: NO JUGAR',
+      play_advice: 'PRECAUCION',
+      play_advice_title: 'KAL recomienda: PRECAUCIÓN (5%)',
       play_advice_detail:
-        'Hoy el parlay es EDGE DÉBIL. Con tu plan del 10% no compensa forzar. Pasa o usa solo un single HIGH en Pronósticos.',
+        'Slip no es ideal, pero puedes jugar con mitad de stake (5%) y registrar HIT/MISS para que el historial aprenda. O pulsa «No jugué».',
     };
   }
+  const pct = 0.1;
+  const stake = Math.round(bank.current * pct * 100) / 100;
   return {
     mode: 'BASE_10',
     pct,

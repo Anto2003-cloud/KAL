@@ -4,7 +4,6 @@ import { TEAMS_META } from '../data/mlbData';
 import { TeamLogo } from './TeamLogo';
 import { generatePitcherVsTeamStats } from '../utils/pitcherVsOpponentHelper';
 import { ChevronRight } from 'lucide-react';
-import { formatFairLine, fairAmerican } from '../utils/fairOdds';
 import { valueForPick, type MarketLine } from '../utils/marketOdds';
 
 interface PredictionCardProps {
@@ -21,8 +20,6 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
   const isHomeWinner = p.winner === p.home;
   const winnerProb = isHomeWinner ? p.home_p : p.away_p;
   const isHighConfidence = p.conf === 'HIGH' || winnerProb >= 0.65;
-  const fairLine = formatFairLine(winnerProb);
-  const fairAm = fairAmerican(winnerProb);
   const edgeNote =
     winnerProb < 0.55
       ? 'Edge bajo · coin flip'
@@ -149,24 +146,20 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
         </div>
       </div>
 
-      {/* Footer: fair odds + confidence */}
+      {/* Footer: cuota casa + confidence */}
       <div className="mt-4 pt-3 border-t border-white/[0.04] space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-[11px] text-neutral-500">Cuota justa (modelo)</span>
-          <span className="font-mono text-[11px] text-neutral-200">{fairLine}</span>
-        </div>
         <div className="flex items-center justify-between text-xs">
           <span className="text-[11px] text-neutral-500">Cuota casa (moneyline)</span>
           <span className="font-mono text-[11px] text-neutral-200">
             {value.market_decimal
               ? `${value.market_decimal.toFixed(2)}x${marketLine?.book ? ` · ${marketLine.book}` : ''}`
-              : '— sin línea'}
+              : '— sin línea de casa'}
           </span>
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span className="text-[11px] text-neutral-500">Value</span>
+          <span className="text-[11px] text-neutral-500">Value vs casa</span>
           <span className={`text-[11px] font-medium ${value.has_value ? 'text-emerald-400' : 'text-neutral-400'}`}>
-            {value.label}
+            {value.market_decimal ? value.label : 'Esperando cuota de casa'}
           </span>
         </div>
         <div className="flex items-center justify-between text-xs">

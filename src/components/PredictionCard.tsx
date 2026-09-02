@@ -6,14 +6,16 @@ import { generatePitcherVsTeamStats } from '../utils/pitcherVsOpponentHelper';
 import { ChevronRight } from 'lucide-react';
 import { valueForPick, type MarketLine } from '../utils/marketOdds';
 import { decimalToAmerican } from '../utils/fairOdds';
+import { findPublicSplit, signalForPick, type PublicSplit } from '../utils/publicBetting';
 
 interface PredictionCardProps {
   prediction: GamePrediction;
   onSelect: (prediction: GamePrediction) => void;
   marketLine?: MarketLine | null;
+  publicSplits?: PublicSplit[];
 }
 
-export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSelect, marketLine }) => {
+export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSelect, marketLine, publicSplits = [] }) => {
   const p = prediction;
   const homeMeta = TEAMS_META[p.home] || { name: p.home, city: p.home, primaryColor: '#000000' };
   const awayMeta = TEAMS_META[p.away] || { name: p.away, city: p.away, primaryColor: '#000000' };
@@ -30,6 +32,13 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
 
   const dqScore = typeof (p as any).data_quality_score === 'number' ? (p as any).data_quality_score : null;
   const value = valueForPick(p.winner, p.home, p.away, p.home_p, p.away_p, marketLine || null);
+  const pub = signalForPick(
+    findPublicSplit(publicSplits, p.home, p.away),
+    p.winner,
+    p.home,
+    p.away
+  );
+
   const dqLabel =
     dqScore == null
       ? null
@@ -155,6 +164,12 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
             {value.market_decimal
               ? `${decimalToAmerican(value.market_decimal)}${marketLine?.book ? ` · ${marketLine.book}` : ''}`
               : '— sin línea de casa'}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-[11px] text-neutral-500">Público (tickets)</span>
+          <span className={`text-[11px] font-medium ${pub.fade ? 'text-rose-400' : 'text-neutral-400'}`}>
+            {pub.label}
           </span>
         </div>
         <div className="flex items-center justify-between text-xs">

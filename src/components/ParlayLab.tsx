@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import type { GamePrediction } from '../types';
 import { findMarketLine, type MarketLine } from '../utils/marketOdds';
 import { decimalToAmerican, decimalToAmericanNum } from '../utils/fairOdds';
+import { findPublicSplit, signalForPick, type PublicSplit } from '../utils/publicBetting';
 
 /** Acepta decimal (1.65) o americana (-130 / +150) → decimal */
 function parseOddsInput(raw: string): number | undefined {
@@ -51,6 +52,7 @@ interface Props {
   history?: KalParlaySlip[];
   onLockSlip?: (slip: KalParlaySlip) => void;
   marketLines?: MarketLine[];
+  publicSplits?: PublicSplit[];
 }
 
 const honestyColor = {
@@ -86,7 +88,7 @@ function loadPlays(): ParlayPlayLog[] {
   }
 }
 
-export function ParlayLab({ games, date, history = [], onLockSlip, marketLines = [] }: Props) {
+export function ParlayLab({ games, date, history = [], onLockSlip, marketLines = [], publicSplits = [] }: Props) {
   const [strategy, setStrategy] = useState<'TOP4_SAFE' | 'TOP4_PROB' | 'TOP4_HIGH_ONLY'>(
     'TOP4_SAFE'
   );
@@ -119,6 +121,10 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
       if (am == null) return false;
       if (am < -130) return false; // -164, -250… fuera
       if (am > 180) return false;
+      // Público ≥90% al pick → FADE (no entra al parlay seguro)
+      const pick = g.home_p >= g.away_p ? g.home : g.away;
+      const sig = signalForPick(findPublicSplit(publicSplits, g.home, g.away), pick, g.home, g.away);
+      if (sig.fade) return false;
       return true;
     });
     const pool = effectiveStrategy === 'TOP4_SAFE' && hasBooks ? byBook : games;
@@ -126,7 +132,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
       min_leg_prob: effectiveStrategy === 'TOP4_SAFE' ? 0.50 : 0.48,
       max_leg_prob: 0.565,
     });
-  }, [games, date, effectiveStrategy, marketLines]);
+  }, [games, date, effectiveStrategy, marketLines, publicSplits]);
 
   const planDecision = useMemo(() => {
     if (!slip) {

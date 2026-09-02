@@ -424,6 +424,122 @@ def api_backfill(
 
 
 
+
+@app.get("/api/public-splits")
+def api_public_splits():
+    """
+    % de tickets/money del público por partido.
+    Fuentes (en orden):
+      1) SHARP_API_KEY → SharpAPI /api/v1/splits (Pro)
+      2) data/public_splits_manual.json (pegado a mano)
+    Sin fuente: configured=false (no inventamos el 90%).
+    """
+    key = os.environ.get("SHARP_API_KEY") or os.environ.get("SPLITS_API_KEY") or ""
+    name_to_abbr = {
+        "arizona diamondbacks": "ARI", "atlanta braves": "ATL", "baltimore orioles": "BAL",
+        "boston red sox": "BOS", "chicago cubs": "CHC", "chicago white sox": "CWS",
+        "cincinnati reds": "CIN", "cleveland guardians": "CLE", "colorado rockies": "COL",
+        "detroit tigers": "DET", "houston astros": "HOU", "kansas city royals": "KC",
+        "los angeles angels": "LAA", "los angeles dodgers": "LAD", "miami marlins": "MIA",
+        "milwaukee brewers": "MIL", "minnesota twins": "MIN", "new york mets": "NYM",
+        "new york yankees": "NYY", "oakland athletics": "OAK", "athletics": "ATH",
+        "sacramento athletics": "ATH", "philadelphia phillies": "PHI", "pittsburgh pirates": "PIT",
+        "san diego padres": "SD", "san francisco giants": "SF", "seattle mariners": "SEA",
+        "st. louis cardinals": "STL", "st louis cardinals": "STL", "tampa bay rays": "TB",
+        "texas rangers": "TEX", "toronto blue jays": "TOR", "washington nationals": "WSH",
+    }
+
+    def abbr(n):
+        if not n:
+            return None
+        return name_to_abbr.get(str(n).strip().lower())
+
+    splits = []
+    source = None
+
+    # 1) SharpAPI
+    if key:
+        try:
+            import requests
+            # endpoint genérico; ajustar si el vendor usa otro path
+            url = os.environ.get(
+                "SHARP_SPLITS_URL",
+                "https://api.sharpapi.io/api/v1/splits?sport=mlb",
+            )
+            r = requests.get(url, headers={"Authorization": f"Bearer {key}", "X-API-Key": key}, timeout=25)
+            if r.ok:
+                data = r.json()
+                rows = data if isinstance(data, list) else data.get("data") or data.get("splits") or []
+                for row in rows:
+                    home = row.get("home_team") or row.get("home") or ""
+                    away = row.get("away_team") or row.get("away") or ""
+                    ha, aa = abbr(home) or row.get("home_abbr"), abbr(away) or row.get("away_abbr")
+                    # tickets %
+                    ht = row.get("home_bet_pct") or row.get("home_tickets_pct") or row.get("home_tickets")
+                    at = row.get("away_bet_pct") or row.get("away_tickets_pct") or row.get("away_tickets")
+                    hm = row.get("home_handle_pct") or row.get("home_money_pct")
+                    am = row.get("away_handle_pct") or row.get("away_money_pct")
+                    # normalize 0-1 → 0-100
+                    def pct(x):
+                        if x is None:
+                            return None
+                        try:
+                            v = float(x)
+                        except Exception:
+                            return None
+                        return v * 100 if v <= 1.0 else v
+                    if ha and aa:
+                        splits.append({
+                            "home_abbr": ha,
+                            "away_abbr": aa,
+                            "home_tickets_pct": pct(ht),
+                            "away_tickets_pct": pct(at),
+                            "home_money_pct": pct(hm),
+                            "away_money_pct": pct(am),
+                            "source": "sharpapi",
+                        })
+                source = "sharpapi"
+        except Exception as e:
+            return {"configured": False, "splits": [], "error": str(e), "note": "SharpAPI falló"}
+
+    # 2) manual JSON on volume/image
+    if not splits:
+        for path in (
+            DATA / "public_splits_manual.json",
+            KAL / "data" / "public_splits_manual.json",
+            Path("/app/seed_kal_data/public_splits_manual.json"),
+        ):
+            if path.exists():
+                try:
+                    import json as _json
+                    rows = _json.loads(path.read_text(encoding="utf-8"))
+                    if isinstance(rows, dict):
+                        rows = rows.get("splits") or []
+                    splits = rows
+                    source = "manual_json"
+                    break
+                except Exception:
+                    pass
+
+    if not splits:
+        return {
+            "configured": False,
+            "splits": [],
+            "fade_threshold": 90,
+            "note": "Sin feed de público. Opciones: SHARP_API_KEY (SharpAPI Pro) o archivo public_splits_manual.json",
+        }
+
+    return {
+        "configured": True,
+        "source": source,
+        "count": len(splits),
+        "fade_threshold": 90,
+        "rule": "Si ≥90% tickets al pick del modelo → FADE (evitar en parlay / warning en card)",
+        "splits": splits,
+    }
+
+
+
 @app.get("/api/odds")
 def api_odds():
     """Proxy The Odds API: moneylines de casas US (FanDuel, DK, etc.)."""

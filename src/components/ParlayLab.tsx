@@ -77,7 +77,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
   const slip = useMemo(
     () =>
       buildKalPick4(games, date, effectiveStrategy, {
-        min_leg_prob: effectiveStrategy === 'TOP4_SAFE' ? 0.52 : 0.50,
+        min_leg_prob: effectiveStrategy === 'TOP4_SAFE' ? 0.50 : 0.48,
         max_leg_prob: 0.565,
       }),
     [games, date, effectiveStrategy]
@@ -262,10 +262,10 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
     return (
       <div className="p-8 rounded-2xl border border-white/[0.06] bg-[#18181b] text-center space-y-3">
         <p className="text-sm text-neutral-300">
-          No hay 4 piernas en la zona de valor (justa entre −130 y +110; sin favoritos −140/−150/−200).
+          No hay 4 piernas en zona de cuotas −130 a +180 (sin favoritos −140/−200 ni dogs peores que +180).
         </p>
         <p className="text-xs text-neutral-500">
-          Se excluyen equipos muy favoritos (pagan poco) y underdogs largos. Prueba “Top 4 prob” o pasa el día.
+          Rango: −130 … +180. Fuera: −140/−150/−200 (pagan poco) y +200 o más. Prueba “Top 4 prob” o pasa el día.
         </p>
         <button
           type="button"
@@ -295,7 +295,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
         <div className="flex flex-wrap gap-2">
           {(
             [
-              ['TOP4_SAFE', 'Seguro (sin −140/−200)'],
+              ['TOP4_SAFE', 'Seguro (−130…+180)'],
               ['TOP4_PROB', 'Top 4 prob'],
               ['TOP4_HIGH_ONLY', 'Solo MED/HIGH'],
             ] as const
@@ -455,7 +455,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
           <div className="text-xs text-neutral-400">
             Slip <span className="text-neutral-200 font-mono">{slip.id}</span>
             <span className="text-neutral-600">
-              {' '}· p {slip.min_leg_prob.toFixed(2)}–0.57 · sin favoritos más cortos que −130
+              {' '}· cuotas −130…+180 · sin −140/−200
             </span>
           </div>
           <div className={`text-xs font-semibold ${honestyColor[slip.honesty_label]}`}>

@@ -153,12 +153,12 @@ export function honestyFor(p: number, legs: ParlayLeg[]): {
 /**
  * Filtro de cuotas (regla del usuario):
  * - NO jugar favoritos muy cargados: americana < -130 (ej. -140, -150, -200) → pagan poco.
- * - NO jugar underdogs largos: americana > +110.
- * - Rango permitido aproximado: -130 ≤ justa ≤ +110 (mejor zona -130 a -105).
- * - min_leg_prob evita coin-flips extremos; max_leg_prob evita super-favoritos.
+ * - NO jugar underdogs más largos que +180.
+ * - Rango permitido: -130 ≤ justa ≤ +180 (pedido del usuario).
+ * - min_leg_prob / max_leg_prob alineados a ese rango de americana.
  */
-const HEAVY_FAV_CUTOFF = -130; // más negativo = más favorito = RECHAZAR
-const MAX_DOG_AMERICAN = 110; // underdog más largo que +110 = RECHAZAR
+const HEAVY_FAV_CUTOFF = -130; // más negativo = más favorito = RECHAZAR (-140/-200 fuera)
+const MAX_DOG_AMERICAN = 180; // underdog más largo que +180 = RECHAZAR
 
 export function buildKalPick4(
   games: GamePrediction[],
@@ -169,8 +169,9 @@ export function buildKalPick4(
   // p≈0.565 → -130; p≈0.67 → -200. Cap en 0.565 para no meter -140/-200.
   const minP =
     opts?.min_leg_prob ??
-    (strategy === 'TOP4_SAFE' ? 0.52 : strategy === 'TOP4_HIGH_ONLY' ? 0.53 : 0.50);
-  const maxP = opts?.max_leg_prob ?? 0.565; // ~ -130; por encima = favorito demasiado corto
+    (strategy === 'TOP4_SAFE' ? 0.50 : strategy === 'TOP4_HIGH_ONLY' ? 0.52 : 0.48);
+  // p>0.565 ≈ más favorito que -130 → fuera
+  const maxP = opts?.max_leg_prob ?? 0.565;
 
   let pool = [...games];
   if (strategy === 'TOP4_HIGH_ONLY') {

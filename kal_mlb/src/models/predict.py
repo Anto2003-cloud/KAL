@@ -448,6 +448,7 @@ def predict_games(
             for c in [
                 "game_pk",
                 "game_date",
+                "game_datetime",  # ISO UTC real, venía del fetch pero se perdía antes de llegar al output
                 "home_team_abbr",
                 "away_team_abbr",
                 "home_starter_name",
@@ -524,7 +525,25 @@ def predict_date(target: date | str, save: bool = True) -> pd.DataFrame:
             jpath = PREDS / f"preds_{target.isoformat()}.json"
             jpath.write_text(preds.to_json(orient="records", date_format="iso"), encoding="utf-8")
         except Exception as e:
-            logger.warning("json save: %s", e)
+            logger.warning("json save (pandas.to_json) falló, probando fallback: %s", e)
+            # Fallback más tolerante: esto es justo lo que pasó el
+            # 2026-08-29/30 — feather/csv se guardaron bien, json no, y el
+            # día desapareció de Historial en silencio.
+            try:
+                import json as _json
+
+                records = preds.to_dict(orient="records")
+                jpath = PREDS / f"preds_{target.isoformat()}.json"
+                jpath.write_text(
+                    _json.dumps(records, default=str, ensure_ascii=False), encoding="utf-8"
+                )
+                logger.info("json save: fallback exitoso para %s", target)
+            except Exception as e2:
+                logger.error(
+                    "json save: fallback TAMBIÉN falló para %s — queda sin json (sí tiene feather/csv): %s",
+                    target,
+                    e2,
+                )
         logger.info("Saved → %s (+ csv/json)", path)
 
     return preds

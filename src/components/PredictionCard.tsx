@@ -6,6 +6,7 @@ import { generatePitcherVsTeamStats } from '../utils/pitcherVsOpponentHelper';
 import { ChevronRight } from 'lucide-react';
 import { formatFairLine, fairAmerican } from '../utils/fairOdds';
 import { valueForPick, type MarketLine } from '../utils/marketOdds';
+import { formatDateTimeVE } from '../utils/timeVE';
 
 interface PredictionCardProps {
   prediction: GamePrediction;
@@ -53,7 +54,7 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
       <div>
         {/* Top bar: Time & Venue */}
         <div className="flex items-center justify-between text-xs text-neutral-400 mb-4 pb-3 border-b border-white/[0.04]">
-          <span className="font-medium text-neutral-300">{p.game_time || '19:05 ET'}</span>
+          <span className="font-medium text-neutral-300">{formatDateTimeVE(p.game_datetime || p.game_date)}</span>
           <span className="truncate max-w-[170px] text-[11px] text-neutral-500">{p.venue_name}</span>
         </div>
 

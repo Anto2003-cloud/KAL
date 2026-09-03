@@ -4,6 +4,7 @@
 
 import type { GamePrediction, ConfidenceLevel } from '../types';
 import { fairAmerican, fairDecimal } from './fairOdds';
+import { findMarketLine, impliedFromDecimal, type MarketLine } from './marketOdds';
 
 export interface ParlayLeg {
   game_pk: number;
@@ -38,7 +39,8 @@ export interface KalParlaySlip {
   units_won?: number;
   /** Filtro anti-longshot aplicado */
   min_leg_prob: number;
-  max_fair_american: number;
+  book_odds_range: { min_american: number; max_american: number };
+  used_fallback_odds: boolean;
 }
 
 /** Registro personal de si jugaste el parlay y cuánto */
@@ -151,45 +153,65 @@ export function honestyFor(p: number, legs: ParlayLeg[]): {
 }
 
 /**
- * Anti-longshot:
- * - TOP4_SAFE: solo favoritos claros (p≥58%, justa americana ≤ -130)
- * - Nada de underdogs / cuotas altas (+money)
- * - REGLA DURA DEL USUARIO: nunca jugar equipos con cuota justa PEOR que -130
- *   (es decir, americana > -130, ej. -110, -120, o positiva). Esto aplica
- *   SIEMPRE, sin importar la estrategia elegida — no es negociable ni se
- *   afloja para poder completar 4 piernas (ver ABSOLUTE_MAX_FAIR_AMERICAN).
+ * Anti-longshot — rango de cuota REAL de casa de apuestas: -130 a +180
+ * (confirmado explícitamente por el usuario).
+ *
+ * BUG ARREGLADO: la versión anterior calculaba "americana" desde
+ * fairAmericanNum(legProb(g)), pero legProb() siempre toma el lado que el
+ * MODELO favorece (prob >= 50%), y fairAmericanNum para p>=0.5 SIEMPRE
+ * devuelve un número negativo. Eso significa que "americana > +180" nunca
+ * se podía cumplir — era código muerto, y el filtro jamás dejaba pasar el
+ * lado underdog +180 que se pidió. Para que el rango -130/+180 tenga
+ * efecto real hay que compararlo contra la cuota REAL de la casa
+ * (marketLines), no contra la "justa" derivada de la sola probabilidad
+ * del modelo.
+ *
+ * Si no hay cuotas reales cargadas (ODDS_API_KEY no configurada en
+ * Railway), se cae a un fallback más angosto usando solo la prob. del
+ * modelo — pero ese fallback SOLO puede cubrir el techo (nada de
+ * favoritos > -130), nunca el piso +180, por la misma razón matemática de
+ * arriba. El slip queda marcado `used_fallback_odds` para que la UI lo
+ * aclare.
  */
-const ABSOLUTE_MAX_FAIR_AMERICAN = -130;
+const MAX_FAVORITE_IMPLIED = 0.565; // techo: -130 → 130/230 ≈ 56.5%
+const MIN_UNDERDOG_IMPLIED = 0.357; // piso: +180 → 100/280 ≈ 35.7%
 
 export function buildKalPick4(
   games: GamePrediction[],
   date: string,
   strategy: KalParlaySlip['strategy'] = 'TOP4_SAFE',
-  opts?: { min_leg_prob?: number; max_leg_prob?: number }
+  opts?: { min_leg_prob?: number; marketLines?: MarketLine[] }
 ): KalParlaySlip | null {
-  // Rango cuotas modelo: no favoritos -140/-200 (pagan poco); min ~50%
-  const HEAVY = -130; // am < -130 = demasiado favorito
-  const MAX_DOG = 180;
-  const minP = opts?.min_leg_prob ?? (strategy === 'TOP4_SAFE' ? 0.5 : 0.48);
-  const maxP = opts?.max_leg_prob ?? 0.565; // ~ -130
+  const minP = opts?.min_leg_prob ?? (strategy === 'TOP4_SAFE' ? 0.55 : 0.52);
+  const marketLines = opts?.marketLines ?? [];
+  const noRealOddsAtAll = marketLines.length === 0;
 
   let pool = [...games];
   if (strategy === 'TOP4_HIGH_ONLY') {
     pool = pool.filter((g) => g.conf === 'HIGH' || g.conf === 'MEDIUM');
   }
 
+  /** Probabilidad implícita REAL de casa para el lado que el modelo eligió, o null si no hay cuota */
+  const bookImpliedForPick = (g: GamePrediction): number | null => {
+    const line = findMarketLine(marketLines, g.home, g.away);
+    if (!line) return null;
+    const pickHome = g.home_p >= g.away_p;
+    const dec = pickHome ? line.home_decimal : line.away_decimal;
+    if (!dec || dec <= 1) return null;
+    return impliedFromDecimal(dec);
+  };
+
   const passes = (g: GamePrediction, relax: number) => {
     const p = legProb(g);
-    if (p < minP - relax) return false;
-    if (p > maxP + relax * 0.5) return false;
-    const am = fairAmericanNum(p);
-    if (am < HEAVY) return false;
-    if (am > MAX_DOG) return false;
-    return true;
+    if (p < minP - relax) return false; // único valor que se relaja: confianza mínima del modelo
+    if (noRealOddsAtAll) return p <= MAX_FAVORITE_IMPLIED; // rango nunca se relaja
+    const bookP = bookImpliedForPick(g);
+    if (bookP == null) return false; // sin cuota real para este partido puntual, no se adivina
+    return bookP >= MIN_UNDERDOG_IMPLIED && bookP <= MAX_FAVORITE_IMPLIED; // rango nunca se relaja
   };
 
   pool = pool.filter((g) => passes(g, 0));
-  if (pool.length < 4) pool = [...games].filter((g) => passes(g, 0.015));
+  if (pool.length < 4) pool = [...games].filter((g) => passes(g, 0.02));
   if (pool.length < 4) return null;
 
   pool.sort((a, b) => {
@@ -223,7 +245,8 @@ export function buildKalPick4(
     status: 'OPEN',
     units_risked: 1,
     min_leg_prob: minP,
-    max_fair_american: HEAVY,
+    book_odds_range: { min_american: 180, max_american: -130 },
+    used_fallback_odds: noRealOddsAtAll,
   };
 }
 

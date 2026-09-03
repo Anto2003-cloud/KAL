@@ -106,9 +106,13 @@ export interface GamePrediction {
   public_fade?: boolean;
   public_tickets_on_original?: number;
   original_winner?: string;
+  /** Nota textual (ej. aviso de FADE público) que se acumula sobre exp */
+  explanation?: string;
 
   game_pk: number;
   game_date?: string;
+  /** ISO UTC real (gameDate de MLB Stats API) — usado para hora local VE */
+  game_datetime?: string;
   game_time?: string;
   away: string;
   home: string;

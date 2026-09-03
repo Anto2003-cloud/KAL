@@ -207,11 +207,20 @@ def _load_history() -> list[dict]:
             except Exception as e:
                 log.warning("load %s: %s", name, e)
     if not rows:
-        for jf in sorted(PRED_DIR.glob("preds_*.json")):
+        # BUG ARREGLADO: antes solo buscaba preds_*.json — cualquier día
+        # guardado con feather/csv pero sin json (el guardado de json puede
+        # fallar solo) desaparecía en silencio del Historial/Overall. Ahora
+        # se descubren los días combinando los 3 formatos, y se lee cada
+        # uno con _load_preds() (que ya tiene el fallback json→csv→feather).
+        days = set()
+        for pattern in ("preds_*.json", "preds_*.csv", "preds_*.feather"):
+            for jf in PRED_DIR.glob(pattern):
+                days.add(jf.stem.replace("preds_", "")[:10])
+        for day in sorted(days):
             try:
-                rows.extend(json.loads(jf.read_text(encoding="utf-8")))
-            except Exception:
-                pass
+                rows.extend(_load_preds(day))
+            except Exception as e:
+                log.warning("load fallback %s: %s", day, e)
 
     return [_sanitize_history_row(r) for r in rows]
 

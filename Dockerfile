@@ -19,4 +19,6 @@ ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
 EXPOSE 8000
 
-CMD ["uvicorn", "kal_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# El cleanup es idempotente: borra del volume y del seed el historial corrupto
+# 2026-08-02..2026-08-29 antes de que el bootstrap pueda restaurarlo.
+CMD ["sh", "-c", "python /app/kal_api/reset_history_window.py && exec uvicorn kal_api.main:app --host 0.0.0.0 --port 8000"]

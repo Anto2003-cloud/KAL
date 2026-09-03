@@ -262,23 +262,82 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
     });
   };
 
-  if (!slip) {
-    return (
-      <div className="p-8 rounded-2xl border border-white/[0.06] bg-[#18181b] text-center space-y-3">
+  // Bankroll siempre visible; el slip puede faltar
+  const noSlipBanner = !slip ? (
+      <div className="p-6 rounded-2xl border border-white/[0.06] bg-[#18181b] text-center space-y-3">
         <p className="text-sm text-neutral-300">
-          No hay 4 partidos con cuota real de casa entre -130 y +180 hoy. Hoy no hay parlay “corto” de calidad.
+          No hay 4 piernas en rango de casa (−130…+180) con la estrategia actual.
         </p>
         <p className="text-xs text-neutral-500">
-          KAL no mete favoritos tan fuertes que pagan poco (peor que -130) ni underdogs muy largos (peor que +180).
-          Si dice NO JUGAR, se recomienda pasar el día.
+          Prueba “Top 4 por prob”, espera a que carguen las cuotas FanDuel, o pasa el día si el edge es débil.
         </p>
-        <button
-          type="button"
-          className="text-xs px-3 py-1.5 rounded-full bg-white text-black font-semibold"
-          onClick={() => setStrategy('TOP4_PROB')}
-        >
-          Relajar a Top 4 por prob
-        </button>
+        <div className="flex flex-wrap justify-center gap-2">
+          <button
+            type="button"
+            className="text-xs px-3 py-1.5 rounded-full bg-white text-black font-semibold"
+            onClick={() => setStrategy('TOP4_PROB')}
+          >
+            Relajar a Top 4 por prob
+          </button>
+          <button
+            type="button"
+            className="text-xs px-3 py-1.5 rounded-full border border-white/20 text-neutral-200"
+            onClick={() => setStrategy('TOP4_SAFE')}
+          >
+            Volver a Seguro
+          </button>
+        </div>
+      </div>
+  ) : null;
+
+  if (!slip) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Parlay KAL · plan 10/20 + bankroll</h2>
+            <p className="text-xs text-neutral-500 mt-1">Bankroll y registro activos aunque hoy no haya slip.</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-4">
+            <div className="text-[10px] text-neutral-500 uppercase">Bankroll</div>
+            <div className="text-xl font-semibold text-white mt-1">
+              {bank.current.toFixed(2)} {bank.currency}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-4">
+            <div className="text-[10px] text-neutral-500 uppercase">Mes</div>
+            <div className="text-sm text-neutral-200 mt-1">{bank.month_key}</div>
+            <div className="text-[10px] text-neutral-500">inicio {bank.month_start_balance}</div>
+          </div>
+          <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-4">
+            <div className="text-[10px] text-neutral-500 uppercase">Plan</div>
+            <div className="text-sm text-white mt-1">
+              {bank.recovery_active ? '20% recuperación' : '10% base'}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-4">
+            <div className="text-[10px] text-neutral-500 uppercase">Jugadas mes</div>
+            <div className="text-sm text-white mt-1">{monthPlays.length}</div>
+          </div>
+        </div>
+        {noSlipBanner}
+        {monthPlays.length > 0 && (
+          <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] p-4">
+            <div className="text-xs text-neutral-400 mb-2">Registro del mes</div>
+            <ul className="text-xs text-neutral-300 space-y-1 max-h-40 overflow-y-auto">
+              {monthPlays.slice(0, 12).map((pl) => (
+                <li key={pl.id} className="flex justify-between gap-2">
+                  <span>{pl.date} · {pl.result || 'OPEN'}</span>
+                  <span className={pl.profit && pl.profit > 0 ? 'text-emerald-400' : pl.profit && pl.profit < 0 ? 'text-rose-400' : ''}>
+                    {pl.profit != null ? pl.profit.toFixed(2) : '—'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     );
   }

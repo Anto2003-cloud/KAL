@@ -184,7 +184,10 @@ export function buildKalPick4(
 ): KalParlaySlip | null {
   const minP = opts?.min_leg_prob ?? (strategy === 'TOP4_SAFE' ? 0.55 : 0.52);
   const marketLines = opts?.marketLines ?? [];
-  const noRealOddsAtAll = marketLines.length === 0;
+  const gamesHaveMarket = games.some(
+    (g) => (g as any).market_home_decimal > 1 || (g as any).market_pick_decimal > 1
+  );
+  const noRealOddsAtAll = marketLines.length === 0 && !gamesHaveMarket;
 
   let pool = [...games];
   if (strategy === 'TOP4_HIGH_ONLY') {
@@ -193,9 +196,17 @@ export function buildKalPick4(
 
   /** Probabilidad implícita REAL de casa para el lado que el modelo eligió, o null si no hay cuota */
   const bookImpliedForPick = (g: GamePrediction): number | null => {
+    const ga = g as any;
+    // 1) campos enriquecidos del API en el propio partido
+    const pickHome = (g.winner || (g.home_p >= g.away_p ? g.home : g.away)) === g.home;
+    if (ga.market_pick_decimal && ga.market_pick_decimal > 1) {
+      return impliedFromDecimal(Number(ga.market_pick_decimal));
+    }
+    if (pickHome && ga.market_home_decimal > 1) return impliedFromDecimal(Number(ga.market_home_decimal));
+    if (!pickHome && ga.market_away_decimal > 1) return impliedFromDecimal(Number(ga.market_away_decimal));
+    // 2) marketLines del front
     const line = findMarketLine(marketLines, g.home, g.away);
     if (!line) return null;
-    const pickHome = g.home_p >= g.away_p;
     const dec = pickHome ? line.home_decimal : line.away_decimal;
     if (!dec || dec <= 1) return null;
     return impliedFromDecimal(dec);

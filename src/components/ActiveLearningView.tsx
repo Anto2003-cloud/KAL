@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { fetchLivePanel, fetchLiveHistory, fetchRetrainStatus } from '../data/liveApi';
 import {
   TrendingUp,
   Brain,
@@ -44,6 +45,9 @@ export const ActiveLearningView: React.FC = () => {
           <span className="text-neutral-200 font-semibold">Modo demostrativo:</span> el balance, ROI, Kelly, Sharpe y los diagnósticos post-mortem de esta vista son datos de ejemplo, no un registro real de apuestas o resultados. El botón "Ejecutar bucle bayesiano" tampoco recalibra el modelo real — es una simulación visual. El tracking real y verificado (5-0, datos genuinos) está en la pestaña de Métricas.
         </p>
       </div>
+
+      {/* Live strip */}
+      <LiveLearningStrip />
 
       {/* Header Banner: Continuous Learning Loop */}
       <div className="bg-[#0e1017] border border-white/[0.08] rounded-2xl p-5 text-white shadow-xs">
@@ -286,3 +290,64 @@ export const ActiveLearningView: React.FC = () => {
     </div>
   );
 };
+
+
+function LiveLearningStrip() {
+  const [panel, setPanel] = useState<any>(null);
+  const [retrain, setRetrain] = useState<any>(null);
+  const [nHist, setNHist] = useState(0);
+  useEffect(() => {
+    let c = false;
+    (async () => {
+      try {
+        const [p, h, r] = await Promise.all([
+          fetchLivePanel(),
+          fetchLiveHistory(100),
+          fetchRetrainStatus(),
+        ]);
+        if (c) return;
+        if (p) setPanel(p);
+        if (h) setNHist(h.filter((x: any) => x.isGraded).length);
+        if (r) setRetrain(r);
+      } catch {}
+    })();
+    return () => { c = true; };
+  }, []);
+  if (!panel) {
+    return (
+      <div className="rounded-2xl border border-white/[0.06] bg-[#18181b] px-4 py-3 text-xs text-neutral-500">
+        Cargando métricas vivas del API…
+      </div>
+    );
+  }
+  const rec = panel.record || `${panel.hits || 0}-${panel.misses || 0}`;
+  const acc = panel.accuracy != null ? (panel.accuracy * 100).toFixed(1) : '—';
+  return (
+    <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3 space-y-2">
+      <div className="text-[10px] uppercase tracking-wide text-emerald-400/90 font-semibold">Aprendizaje real (API)</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+        <div>
+          <div className="text-neutral-500">Récord graded</div>
+          <div className="text-white font-semibold">{rec}</div>
+        </div>
+        <div>
+          <div className="text-neutral-500">Accuracy</div>
+          <div className="text-white font-semibold">{acc}%</div>
+        </div>
+        <div>
+          <div className="text-neutral-500">Graded</div>
+          <div className="text-white font-semibold">{panel.n_graded ?? nHist}</div>
+        </div>
+        <div>
+          <div className="text-neutral-500">Retrain</div>
+          <div className="text-white font-semibold">
+            {retrain?.ready_to_retrain ? 'Listo' : `Faltan ${retrain?.graded_remaining ?? '—'}`}
+          </div>
+        </div>
+      </div>
+      <p className="text-[10px] text-neutral-500">
+        Debajo hay demos ilustrativas. Este bloque usa panel/historial reales de Railway.
+      </p>
+    </div>
+  );
+}

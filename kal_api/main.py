@@ -589,13 +589,116 @@ def api_odds():
 
 @app.get("/api/preds")
 def preds(date_str: str | None = Query(None, alias="date")):
+    """Predicciones + hora MLB + moneyline casa (FanDuel/DK)."""
     day = date_str or date.today().isoformat()
-    rows = _load_preds(day)
+    rows = [dict(r) for r in _load_preds(day)]
+
+    # Horarios MLB
+    try:
+        import requests
+        r = requests.get(
+            "https://statsapi.mlb.com/api/v1/schedule",
+            params={"sportId": 1, "date": day, "hydrate": "probablePitcher,team,venue"},
+            timeout=20,
+        )
+        if r.ok:
+            by_pk = {}
+            for block in (r.json() or {}).get("dates") or []:
+                for g in block.get("games") or []:
+                    pk = g.get("gamePk")
+                    if pk is None:
+                        continue
+                    teams = g.get("teams") or {}
+                    home_p = (teams.get("home") or {}).get("probablePitcher") or {}
+                    away_p = (teams.get("away") or {}).get("probablePitcher") or {}
+                    st = g.get("status") or {}
+                    by_pk[int(pk)] = {
+                        "game_datetime": g.get("gameDate"),
+                        "status": st.get("detailedState") or st.get("abstractGameState"),
+                        "venue_name": (g.get("venue") or {}).get("name"),
+                        "home_starter_name": home_p.get("fullName"),
+                        "away_starter_name": away_p.get("fullName"),
+                    }
+            for row in rows:
+                try:
+                    pk = int(row.get("game_pk"))
+                except Exception:
+                    continue
+                extra = by_pk.get(pk) or {}
+                if extra.get("game_datetime"):
+                    row["game_datetime"] = extra["game_datetime"]
+                if extra.get("status"):
+                    row["status"] = extra["status"]
+                if extra.get("venue_name"):
+                    row["venue_name"] = extra["venue_name"]
+                # completar pitchers TBD
+                if extra.get("home_starter_name") and (
+                    not row.get("home_starter_name") or str(row.get("home_starter_name")).lower() in ("none", "nan", "tbd", "")
+                ):
+                    row["home_starter_name"] = extra["home_starter_name"]
+                if extra.get("away_starter_name") and (
+                    not row.get("away_starter_name") or str(row.get("away_starter_name")).lower() in ("none", "nan", "tbd", "")
+                ):
+                    row["away_starter_name"] = extra["away_starter_name"]
+    except Exception as e:
+        log.warning("enrich schedule: %s", e)
+
+    # Cuotas casa
+    try:
+        odds_payload = api_odds()
+        lines = (odds_payload or {}).get("lines") if isinstance(odds_payload, dict) else []
+
+        def _aliases(a: str):
+            u = (a or "").upper()
+            if u in ("ATH", "OAK"):
+                return {"ATH", "OAK"}
+            if u in ("SD", "SDP"):
+                return {"SD", "SDP"}
+            if u in ("CWS", "CHW"):
+                return {"CWS", "CHW"}
+            return {u}
+
+        def _am(dec):
+            if not dec or dec <= 1:
+                return None
+            if dec >= 2:
+                return int(round((dec - 1) * 100))
+            return int(round(-100 / (dec - 1)))
+
+        for row in rows:
+            ha = str(row.get("home_team_abbr") or "").upper()
+            aa = str(row.get("away_team_abbr") or "").upper()
+            hs, as_ = _aliases(ha), _aliases(aa)
+            matched = None
+            for L in lines or []:
+                lh = str(L.get("home_abbr") or "").upper()
+                la = str(L.get("away_abbr") or "").upper()
+                if lh in hs and la in as_ and L.get("home_decimal") and L.get("away_decimal"):
+                    matched = L
+                    break
+            if not matched:
+                continue
+            hd, ad = matched.get("home_decimal"), matched.get("away_decimal")
+            row["market_home_decimal"] = hd
+            row["market_away_decimal"] = ad
+            row["market_home_american"] = _am(hd)
+            row["market_away_american"] = _am(ad)
+            row["market_book"] = matched.get("book")
+            pick = str(row.get("predicted_winner") or "").upper()
+            if pick in hs:
+                row["market_pick_decimal"] = hd
+                row["market_pick_american"] = _am(hd)
+            elif pick in as_:
+                row["market_pick_decimal"] = ad
+                row["market_pick_american"] = _am(ad)
+    except Exception as e:
+        log.warning("enrich odds: %s", e)
+
     return {
         "date": day,
         "count": len(rows),
         "live": True,
-        "source": "kal_mlb/data/predictions",
+        "source": "kal_mlb/data/predictions+mlb_schedule+odds",
         "predictions": rows,
     }
 

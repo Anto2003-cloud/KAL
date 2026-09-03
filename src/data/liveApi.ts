@@ -50,6 +50,14 @@ export function mapApiPrediction(row: any): any {
     data_quality_score: row.data_quality_score,
     data_quality: row.data_quality,
     season_phase: row.season_phase,
+    game_datetime: row.game_datetime || null,
+    market_home_decimal: row.market_home_decimal,
+    market_away_decimal: row.market_away_decimal,
+    market_home_american: row.market_home_american,
+    market_away_american: row.market_away_american,
+    market_pick_american: row.market_pick_american,
+    market_pick_decimal: row.market_pick_decimal,
+    market_book: row.market_book,
   };
 }
 

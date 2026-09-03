@@ -1,0 +1,6 @@
+game_pk,game_date,home_team_abbr,away_team_abbr,home_starter_name,away_starter_name,venue_name,status,home_win_prob,away_win_prob,predicted_winner,confidence,predicted_at,model_version,prediction_id
+823501,2026-08-29,NYY,BOS,Max Fried,Alec Gamboa,Yankee Stadium,In Progress,0.5305196256743737,0.4694803743256263,NYY,LOW,2026-08-30T01:41:43.791428,"[2023, 2024, 2025]",c9e29a89-97b5-492a-9a09-6459b7ce8ebc
+823741,2026-08-29,MIL,TEX,Shane Drohan,Cal Quantrill,American Family Field,In Progress,0.5455991000803736,0.4544008999196264,MIL,LOW,2026-08-30T01:41:43.791428,"[2023, 2024, 2025]",1b7e48c1-c509-4f6d-b7a9-89071a4e64dd
+823176,2026-08-30,SF,AZ,Yunior Marte,Mitch Bratt,Oracle Park,Pre-Game,0.42590247970573786,0.5740975202942622,AZ,MEDIUM,2026-08-30T01:41:43.791428,"[2023, 2024, 2025]",f94f1fce-6055-4faf-b213-af77b30f648d
+823986,2026-08-30,LAA,PHI,Ryan Johnson,Cristopher Sánchez,Angel Stadium,Pre-Game,0.45177399076576996,0.54822600923423,PHI,LOW,2026-08-30T01:41:43.791428,"[2023, 2024, 2025]",42989057-35e6-4fb6-b821-1c5b8d805584
+824961,2026-08-30,ATH,BAL,Jack Perkins,Shane Baz,Sutter Health Park,Warmup,0.43346575142544813,0.5665342485745519,BAL,MEDIUM,2026-08-30T01:41:43.791428,"[2023, 2024, 2025]",0425792f-ced3-435b-9ad1-be1187c34e65

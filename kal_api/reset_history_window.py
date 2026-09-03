@@ -1,9 +1,8 @@
 """One-time/idempotent cleanup for the bad prediction-history window.
 
-The August 2–29, 2026 records were known to contain bad grading/prediction
-history. They must not be visible to the API or used by tracking/retraining.
-This script runs before uvicorn on every container start and is intentionally
-idempotent.
+Only August 29-30, 2026 are considered corrupt for the current reset.
+They must not be visible to the API or used by tracking/retraining.
+This script runs before uvicorn on every container start and is idempotent.
 """
 from __future__ import annotations
 
@@ -14,8 +13,8 @@ from pathlib import Path
 ROOT = Path("/app")
 DATA = ROOT / "kal_mlb" / "data"
 SEED = ROOT / "seed_kal_data"
-START = date(2026, 8, 2)
-END = date(2026, 8, 29)
+START = date(2026, 8, 29)
+END = date(2026, 8, 30)
 
 
 def in_bad_window(value: object) -> bool:
@@ -32,7 +31,6 @@ def clean_prediction_files(base: Path) -> int:
     if not pred_dir.exists():
         return 0
     for p in pred_dir.glob("preds_*"):
-        # File names are preds_YYYY-MM-DD.ext; only delete exact dates in range.
         day = p.stem.replace("preds_", "")[:10]
         if in_bad_window(day):
             try:
@@ -93,14 +91,12 @@ def clean_tree(base: Path) -> dict[str, int]:
 
 
 def main() -> None:
-    # Clean the persistent volume and the image seed so bootstrap cannot restore
-    # the deleted bad dates on the next API startup.
     total = {"predictions": 0, "graded": 0}
     for base in (DATA, SEED):
         c = clean_tree(base)
         total["predictions"] += c["predictions"]
         total["graded"] += c["graded"]
-    print(f"reset-history: removed {total['predictions']} prediction files and {total['graded']} graded rows from 2026-08-02..2026-08-29")
+    print(f"reset-history: removed {total['predictions']} prediction files and {total['graded']} graded rows from 2026-08-29..2026-08-30")
 
 
 if __name__ == "__main__":

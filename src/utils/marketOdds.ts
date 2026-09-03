@@ -1,7 +1,6 @@
 /**
- * Value vs mercado.
- * - Sin API key: usa solo cuota justa del modelo.
- * - Con VITE_ODDS_API_KEY (The Odds API): intenta moneyline MLB del día.
+ * Value vs mercado usando exclusivamente la cuota publicada por una casa.
+ * Las cuotas llegan del proxy backend (/api/odds).
  */
 
 export interface MarketLine {
@@ -17,7 +16,6 @@ export interface MarketLine {
 export interface ValueView {
   pick: string;
   model_prob: number;
-  fair_decimal: number;
   market_decimal?: number;
   /** model_prob - implied market */
   edge?: number;
@@ -40,7 +38,6 @@ export function valueForPick(
 ): ValueView {
   const isHome = pick === home;
   const model_prob = isHome ? home_p : away_p;
-  const fair_decimal = model_prob > 0 ? 1 / model_prob : 99;
   const market_decimal = market
     ? isHome
       ? market.home_decimal
@@ -51,9 +48,8 @@ export function valueForPick(
     return {
       pick,
       model_prob,
-      fair_decimal,
       has_value: false,
-      label: 'Sin cuota de casa — solo justa del modelo',
+      label: 'Sin cuota de casa disponible',
     };
   }
   const implied = impliedFromDecimal(market_decimal);
@@ -63,7 +59,6 @@ export function valueForPick(
   return {
     pick,
     model_prob,
-    fair_decimal,
     market_decimal,
     edge,
     has_value,
@@ -79,13 +74,6 @@ export function valueForPick(
 /**
  * Trae moneylines vía el proxy del backend (/api/odds), que guarda la key
  * de The Odds API del lado del servidor (Railway, env var ODDS_API_KEY).
- *
- * ANTES esta función pegaba directo a api.the-odds-api.com usando
- * VITE_ODDS_API_KEY del lado del cliente — cualquier variable VITE_* queda
- * compilada en el bundle JS público, visible con F12 por cualquiera. Con
- * un plan pago de The Odds API eso es una key filtrada de verdad. El
- * backend ya tenía /api/odds construido exactamente para esto; solo
- * faltaba que el frontend lo llamara en vez de pegarle directo.
  */
 export async function fetchMlbMoneylineOdds(_dateIso: string): Promise<MarketLine[]> {
   const apiBase =

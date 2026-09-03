@@ -495,6 +495,94 @@ def predict_games(
     return out.sort_values("game_date").reset_index(drop=True)
 
 
+LOCKED_FIELDS = [
+    "predicted_winner",
+    "home_win_prob",
+    "away_win_prob",
+    "confidence",
+    "explanation",
+]
+
+
+def _lock_existing_picks(preds: pd.DataFrame, target: date) -> pd.DataFrame:
+    """
+    Si ya existe una predicción guardada para este día, preserva el pick
+    original (predicted_winner/home_win_prob/confidence/...) por game_pk en
+    vez de dejar que el recálculo de este ciclo lo pise.
+
+    Sin esto, cada corrida del scheduler (varias veces al día) recalculaba
+    todo desde cero y sobreescribía — como las features rolling/cuotas
+    cambian un poco entre corridas, el pick podía voltear de un equipo a
+    otro en pleno día (reportado por el usuario: Toronto -> Cleveland).
+
+    Solo se preserva si el partido AÚN NO EMPEZÓ (no tiene sentido -ni es
+    seguro- bloquear un pick de un partido ya en curso o terminado, eso lo
+    maneja el grading, no esto). Si el partido ya está Live/Final, se dejan
+    pasar los valores nuevos tal cual (aunque en la práctica predict_date ya
+    filtra partidos Final antes de llegar acá).
+    """
+    old = _load_saved_preds_raw(target)
+    if not old:
+        return preds
+
+    old_by_pk = {int(r["game_pk"]): r for r in old if r.get("game_pk") is not None}
+    if not old_by_pk:
+        return preds
+
+    preds = preds.copy()
+    locked_count = 0
+    for idx, row in preds.iterrows():
+        pk = row.get("game_pk")
+        if pk is None or int(pk) not in old_by_pk:
+            continue
+        old_row = old_by_pk[int(pk)]
+        # No bloquear si el partido ya está en vivo/terminado — ahí el valor
+        # nuevo (o el grading) manda, no el pick congelado de la mañana.
+        status = str(row.get("status", "")).lower()
+        if "live" in status or "final" in status or "progress" in status:
+            continue
+        if old_row.get("predicted_winner") in (None, "", "nan"):
+            continue  # el registro viejo no tenía pick real, nada que preservar
+        for field in LOCKED_FIELDS:
+            if field in old_row and old_row[field] is not None:
+                preds.at[idx, field] = old_row[field]
+        locked_count += 1
+
+    if locked_count:
+        logger.info(
+            "Picks bloqueados (preservados de la corrida anterior): %d/%d partidos de %s",
+            locked_count,
+            len(preds),
+            target,
+        )
+    return preds
+
+
+def _load_saved_preds_raw(target: date) -> list[dict]:
+    """Lee la predicción ya guardada de este día, en cualquiera de los 3 formatos."""
+    jpath = PREDS / f"preds_{target.isoformat()}.json"
+    if jpath.exists():
+        try:
+            import json as _json
+
+            return _json.loads(jpath.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning("lock: no se pudo leer json previo de %s: %s", target, e)
+    csvp = PREDS / f"preds_{target.isoformat()}.csv"
+    if csvp.exists():
+        try:
+            return pd.read_csv(csvp).to_dict(orient="records")
+        except Exception as e:
+            logger.warning("lock: no se pudo leer csv previo de %s: %s", target, e)
+    fp = PREDS / f"preds_{target.isoformat()}.feather"
+    if fp.exists():
+        try:
+            return pd.read_feather(fp).to_dict(orient="records")
+        except Exception as e:
+            logger.warning("lock: no se pudo leer feather previo de %s: %s", target, e)
+    return []
+
+
 def predict_date(target: date | str, save: bool = True) -> pd.DataFrame:
     if isinstance(target, str):
         target = date.fromisoformat(target)
@@ -511,6 +599,9 @@ def predict_date(target: date | str, save: bool = True) -> pd.DataFrame:
 
     logger.info("Predicting %d games for %s", len(games), target)
     preds = predict_games(games)
+
+    if not preds.empty:
+        preds = _lock_existing_picks(preds, target)
 
     if save and not preds.empty:
         path = PREDS / f"preds_{target.isoformat()}.feather"

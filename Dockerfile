@@ -19,6 +19,6 @@ ENV PYTHONUNBUFFERED=1
 ENV PORT=8000
 EXPOSE 8000
 
-# Cleanup idempotente: borra del volume y del seed solo el historial corrupto
-# de 2026-08-29..2026-08-30 antes de levantar la API.
+# Repara el historial al arrancar: elimina SOLO 2026-09-01..2026-09-02
+# y conserva/re-registra las predicciones válidas de 2026-08-29..2026-08-30.
 CMD ["sh", "-c", "python /app/kal_api/reset_history_window.py && exec uvicorn kal_api.main:app --host 0.0.0.0 --port 8000"]

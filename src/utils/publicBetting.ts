@@ -96,7 +96,14 @@ export function applyPublicFadeToPrediction(
     away_p = Math.max(0.35, away_p - penalty);
     home_p = 1 - away_p;
   }
-  const winner = home_p >= away_p ? pred.home : pred.away;
+  // IMPORTANTE: el fade NUNCA cambia `winner` — el pick tiene que quedar
+  // fijo (ver bug reportado: Toronto/Miami/Milwaukee cambiaban de pick
+  // entre una carga de la página y otra). Este cálculo se rehace en cada
+  // fetch con cuotas en vivo, así que si se le permitiera voltear el
+  // ganador, el "pick" del usuario podía cambiar solo con refrescar,
+  // aunque el backend ya lo tuviera bloqueado. El fade queda como aviso
+  // informativo (probabilidad ajustada + nota), nunca como cambio de pick.
+  const winner = pred.winner;
   let conf: ConfidenceLevel = pred.conf;
   const top = Math.max(home_p, away_p);
   if (top < 0.55) conf = 'LOW';
@@ -110,7 +117,7 @@ export function applyPublicFadeToPrediction(
     conf,
     explanation:
       (pred.explanation || '') +
-      `\n📉 FADE público: ${tickets.toFixed(0)}% al pick original (${pred.winner}). Prob −${(penalty * 100).toFixed(1)} pp.`,
+      `\n📉 FADE público: ${tickets.toFixed(0)}% al pick original (${pred.winner}). Prob −${(penalty * 100).toFixed(1)} pp. El pick se mantiene fijo.`,
     public_fade: true,
     public_tickets_on_original: tickets,
     original_winner: pred.winner,

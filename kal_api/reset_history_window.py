@@ -60,10 +60,9 @@ def write_prediction_formats(rows: list[dict], day: str) -> None:
         return
     pred_dir = DATA / "predictions"
     pred_dir.mkdir(parents=True, exist_ok=True)
+    # Do not deduplicate by game_pk here: the preserved Aug 30 archive contains
+    # 19 records that must all be re-registered exactly as preserved.
     df = pd.DataFrame(rows)
-    # Keep one immutable prediction per game.
-    if "game_pk" in df.columns:
-        df = df.drop_duplicates(subset=["game_pk"], keep="last")
     df.to_csv(pred_dir / f"preds_{day}.csv", index=False)
     df.to_json(pred_dir / f"preds_{day}.json", orient="records", date_format="iso")
     try:
@@ -131,21 +130,16 @@ def rebuild_aug30_from_archive() -> list[dict]:
 
 
 def merge_history(rows: list[dict]) -> list[dict]:
-    # Prefer prediction_id, then game_pk, so recovery is idempotent.
+    # Deduplicate only exact prediction IDs. Do NOT deduplicate by game_pk:
+    # the requirement is to preserve/register every valid archived record.
     out: list[dict] = []
     seen_pred: set[str] = set()
-    seen_game: set[str] = set()
     for r in rows:
         pid = str(r.get("prediction_id") or "")
-        game = str(r.get("game_pk") or "")
         if pid and pid in seen_pred:
-            continue
-        if game and game in seen_game:
             continue
         if pid:
             seen_pred.add(pid)
-        if game:
-            seen_game.add(game)
         out.append(r)
     return out
 

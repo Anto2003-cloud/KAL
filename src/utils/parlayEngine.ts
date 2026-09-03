@@ -221,8 +221,14 @@ export function buildKalPick4(
     return bookP >= MIN_UNDERDOG_IMPLIED && bookP <= MAX_FAVORITE_IMPLIED; // rango nunca se relaja
   };
 
+  let usedFallback = noRealOddsAtAll;
   pool = pool.filter((g) => passes(g, 0));
   if (pool.length < 4) pool = [...games].filter((g) => passes(g, 0.02));
+  // Último recurso: top 4 por probabilidad del modelo (siempre que haya ≥4 juegos)
+  if (pool.length < 4 && games.length >= 4) {
+    pool = [...games];
+    usedFallback = true;
+  }
   if (pool.length < 4) return null;
 
   pool.sort((a, b) => {
@@ -240,7 +246,12 @@ export function buildKalPick4(
   legs.forEach((l) => {
     conf_mix[l.conf] += 1;
   });
-  const { label, note } = honestyFor(p, legs);
+  let { label, note } = honestyFor(p, legs);
+  if (usedFallback) {
+    note =
+      (note ? note + ' · ' : '') +
+      'Slip con fallback (sin 4 cuotas de casa en rango −130…+180). Revisa value antes de jugar.';
+  }
 
   return {
     id: `P4-${date}-${strategy}`,
@@ -257,7 +268,7 @@ export function buildKalPick4(
     units_risked: 1,
     min_leg_prob: minP,
     book_odds_range: { min_american: 180, max_american: -130 },
-    used_fallback_odds: noRealOddsAtAll,
+    used_fallback_odds: usedFallback,
   };
 }
 

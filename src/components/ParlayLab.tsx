@@ -66,7 +66,7 @@ function loadPlays(): ParlayPlayLog[] {
 
 export function ParlayLab({ games, date, history = [], onLockSlip, marketLines = [], publicSplits = [] }: Props) {
   const [strategy, setStrategy] = useState<'TOP4_SAFE' | 'TOP4_PROB' | 'TOP4_HIGH_ONLY'>(
-    'TOP4_SAFE'
+    'TOP4_PROB'
   );
   const [bank, setBank] = useState<BankrollState>(() => loadBank());
   const [plays, setPlays] = useState<ParlayPlayLog[]>(() => loadPlays());

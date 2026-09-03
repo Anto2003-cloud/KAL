@@ -4,8 +4,8 @@ import { TEAMS_META } from '../data/mlbData';
 import { TeamLogo } from './TeamLogo';
 import { generatePitcherVsTeamStats } from '../utils/pitcherVsOpponentHelper';
 import { ChevronRight } from 'lucide-react';
-import { formatFairLine, fairAmerican } from '../utils/fairOdds';
 import { valueForPick, type MarketLine } from '../utils/marketOdds';
+import { decimalToAmerican } from '../utils/fairOdds';
 import { formatDateTimeVE } from '../utils/timeVE';
 
 interface PredictionCardProps {
@@ -22,8 +22,6 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
   const isHomeWinner = p.winner === p.home;
   const winnerProb = isHomeWinner ? p.home_p : p.away_p;
   const isHighConfidence = p.conf === 'HIGH' || winnerProb >= 0.65;
-  const fairLine = formatFairLine(winnerProb);
-  const fairAm = fairAmerican(winnerProb);
   const edgeNote =
     winnerProb < 0.55
       ? 'Edge bajo · coin flip'
@@ -41,6 +39,11 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
         : dqScore >= 3
           ? 'Datos parciales'
           : 'Datos incompletos';
+
+  const houseDecimal = marketLine
+    ? (isHomeWinner ? marketLine.home_decimal : marketLine.away_decimal)
+    : undefined;
+  const houseAmerican = houseDecimal && houseDecimal > 1 ? decimalToAmerican(houseDecimal) : '—';
 
   // Pitcher vs Opponent Team Analysis
   const awayPitcherVsHome = generatePitcherVsTeamStats(p.away_sp, p.home, false);
@@ -81,7 +84,6 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
                     </span>
                   )}
                 </div>
-                {/* Pitcher + H2H against opponent */}
                 <div className="text-[11px] text-neutral-400 truncate mt-0.5 flex items-center gap-1.5">
                   <span className="text-neutral-300 font-medium">{p.away_sp}</span>
                   <span className="text-neutral-600">·</span>
@@ -118,7 +120,6 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
                     </span>
                   )}
                 </div>
-                {/* Pitcher + H2H against opponent */}
                 <div className="text-[11px] text-neutral-400 truncate mt-0.5 flex items-center gap-1.5">
                   <span className="text-neutral-300 font-medium">{p.home_sp}</span>
                   <span className="text-neutral-600">·</span>
@@ -150,11 +151,14 @@ export const PredictionCard: React.FC<PredictionCardProps> = ({ prediction, onSe
         </div>
       </div>
 
-      {/* Footer: fair odds + confidence */}
+      {/* Footer: only bookmaker odds + confidence */}
       <div className="mt-4 pt-3 border-t border-white/[0.04] space-y-2">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-[11px] text-neutral-500">Cuota justa (modelo)</span>
-          <span className="font-mono text-[11px] text-neutral-200">{fairLine}</span>
+          <span className="text-[11px] text-neutral-500">Cuota de casa</span>
+          <span className="font-mono text-[11px] text-neutral-200">
+            {houseDecimal && houseDecimal > 1 ? `${houseAmerican} · ${houseDecimal.toFixed(2)}x` : 'No disponible'}
+            {marketLine?.book ? <span className="text-neutral-500 ml-2">{marketLine.book}</span> : null}
+          </span>
         </div>
         <div className="flex items-center justify-between text-xs">
           <span className="text-[11px] text-neutral-500">Value vs mercado</span>

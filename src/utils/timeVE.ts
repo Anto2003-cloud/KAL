@@ -9,6 +9,17 @@
 
 const VE_OFFSET_HOURS = -4;
 
+/** Fecha de HOY en Venezuela (YYYY-MM-DD), útil para pedir "los partidos de hoy" a la API */
+export function todayVE(): string {
+  const now = new Date();
+  const ve = new Date(now.getTime() + VE_OFFSET_HOURS * 60 * 60 * 1000);
+  const y = ve.getUTCFullYear();
+  const m = String(ve.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(ve.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+
 /**
  * Convierte un ISO datetime UTC (lo que manda la MLB Stats API en
  * `gameDate`, ej. "2026-09-03T23:10:00Z") a hora de Venezuela.

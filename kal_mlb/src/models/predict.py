@@ -583,6 +583,58 @@ def _load_saved_preds_raw(target: date) -> list[dict]:
     return []
 
 
+def unlock_game(target: date | str, game_pk: int) -> bool:
+    """
+    Quita UN partido puntual de la predicción ya guardada de ese día, para
+    que la próxima llamada a predict_date() lo recalcule desde cero en vez
+    de preservarlo con _lock_existing_picks().
+
+    Uso: cuando el bloqueo se congeló sobre un valor equivocado (ej. el fix
+    de bloqueo se desplegó a mitad del día y capturó un pick que ya se
+    había volteado antes de que el fix llegara a producción) — esto permite
+    corregir ESE partido puntual sin tocar el resto del día ni desarmar el
+    bloqueo para los demás partidos.
+    """
+    if isinstance(target, str):
+        target = date.fromisoformat(target)
+
+    changed = False
+    jpath = PREDS / f"preds_{target.isoformat()}.json"
+    if jpath.exists():
+        try:
+            import json as _json
+
+            rows = _json.loads(jpath.read_text(encoding="utf-8"))
+            new_rows = [r for r in rows if int(r.get("game_pk", -1)) != int(game_pk)]
+            if len(new_rows) != len(rows):
+                jpath.write_text(_json.dumps(new_rows, default=str, ensure_ascii=False), encoding="utf-8")
+                changed = True
+        except Exception as e:
+            logger.warning("unlock_game: json %s: %s", target, e)
+
+    for ext in ("csv", "feather"):
+        p = PREDS / f"preds_{target.isoformat()}.{ext}"
+        if not p.exists():
+            continue
+        try:
+            df = pd.read_csv(p) if ext == "csv" else pd.read_feather(p)
+            if "game_pk" not in df.columns:
+                continue
+            before = len(df)
+            df = df[df["game_pk"].astype(int) != int(game_pk)]
+            if len(df) != before:
+                if ext == "csv":
+                    df.to_csv(p, index=False)
+                else:
+                    df.reset_index(drop=True).to_feather(p)
+                changed = True
+        except Exception as e:
+            logger.warning("unlock_game: %s %s: %s", ext, target, e)
+
+    logger.info("unlock_game: game_pk=%s día=%s cambiado=%s", game_pk, target, changed)
+    return changed
+
+
 def predict_date(target: date | str, save: bool = True) -> pd.DataFrame:
     if isinstance(target, str):
         target = date.fromisoformat(target)

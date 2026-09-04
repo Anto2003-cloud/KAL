@@ -405,6 +405,35 @@ def api_retrain(x_kal_secret: str | None = Header(None), force: bool = Query(Fal
         raise HTTPException(500, str(e))
 
 
+@app.post("/api/run/unlock-game")
+def api_unlock_game(
+    game_pk: int = Query(...),
+    day: str | None = Query(None),
+    x_kal_secret: str | None = Header(None),
+):
+    """
+    Corrige UN partido puntual que quedó bloqueado con un pick equivocado
+    (ej. el fix de bloqueo se desplegó a mitad del día y congeló un valor
+    ya volteado). Quita ese partido del guardado y lo re-predice fresco —
+    el resultado nuevo queda bloqueado desde ahí en adelante, normal.
+    """
+    _check_secret(x_kal_secret)
+    target = day or date.today().isoformat()
+    try:
+        from src.models.predict import unlock_game, predict_date
+
+        changed = unlock_game(target, game_pk)
+        df = predict_date(target, save=True)
+        row = None
+        if df is not None and not df.empty and "game_pk" in df.columns:
+            match = df[df["game_pk"].astype(int) == int(game_pk)]
+            if not match.empty:
+                row = match.iloc[0].to_dict()
+        return {"ok": True, "unlocked": changed, "new_pick": row}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
 @app.post("/api/run/backfill")
 def api_backfill(
     days: int = Query(3, ge=1, le=14),

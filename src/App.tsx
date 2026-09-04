@@ -9,7 +9,8 @@ import { BankrollAndAuditHub } from './components/BankrollAndAuditHub';
 import { LabAndValidationHub } from './components/LabAndValidationHub';
 import { ParlayLab } from './components/ParlayLab';
 import type { KalParlaySlip } from './utils/parlayEngine';
-import { fetchLivePreds, fetchLivePanel, fetchLiveStatus, isLiveConfigured, fetchLiveHistory } from './data/liveApi';
+import { fetchLivePreds,
+  fetchAvailableDates, fetchLivePanel, fetchLiveStatus, isLiveConfigured, fetchLiveHistory } from './data/liveApi';
 import { fetchMlbMoneylineOdds, findMarketLine, type MarketLine } from './utils/marketOdds';
 import { fetchPublicSplits, applyPublicFadeToList, type PublicSplit } from './utils/publicBetting';
 import { autoGradeParlays } from './utils/parlayEngine';
@@ -24,6 +25,7 @@ import { GamePrediction } from './types';
 import { Search } from 'lucide-react';
 
 export default function App() {
+  const [availableApiDates, setAvailableApiDates] = useState<string[]>([]);
   const [activeDate, setActiveDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [activeTab, setActiveTab] = useState<'preds' | 'pillars' | 'history' | 'lab' | 'parlay'>('preds');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -94,6 +96,10 @@ export default function App() {
       if (panel) setLivePanel(panel as any);
       else if (panelFromStatus) setLivePanel(panelFromStatus as any);
       try {
+        try {
+          const ds = await fetchAvailableDates();
+          if (!cancelled && ds.length) setAvailableApiDates(ds);
+        } catch {}
         const odds = await fetchMlbMoneylineOdds(day);
         if (!cancelled && odds.length) setMarketLines(odds);
         try { const sp = await fetchPublicSplits(); if (!cancelled && sp.length) setPublicSplits(sp); } catch {}
@@ -182,6 +188,7 @@ export default function App() {
       todayIso,
       activeDate,
       ...(livePreds?.length ? [activeDate] : []),
+      ...availableApiDates,
       ...Object.keys(RAW_PREDICTIONS),
     ])
   ).sort().reverse();

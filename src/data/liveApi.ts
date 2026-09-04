@@ -268,3 +268,16 @@ export async function fetchMetrics(): Promise<any | null> {
     return null;
   }
 }
+
+
+export async function fetchAvailableDates(): Promise<string[]> {
+  if (!API_BASE) return [];
+  try {
+    const r = await fetch(`${API_BASE}/api/dates`, { cache: 'no-store' });
+    if (!r.ok) return [];
+    const d = await r.json();
+    return Array.isArray(d.dates) ? d.dates.map((x: any) => String(x).slice(0, 10)) : [];
+  } catch {
+    return [];
+  }
+}

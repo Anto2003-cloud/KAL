@@ -89,11 +89,15 @@ def _load_preds(day: str) -> list[dict]:
 
 
 def _is_item_final(r: dict) -> bool:
-    d = str(r.get("game_date") or "")[:10]
-    if d in ["2026-08-29", "2026-08-30"]:
-        return True
-
+    """Solo Final + marcador oficial. Sin fechas especiales inventadas."""
     s = str(r.get("status_y") or r.get("status") or r.get("abstract_state") or "").strip().lower()
+    # Rechazar estados no finales
+    for nf in (
+        "scheduled", "pre-game", "warmup", "in progress", "live",
+        "delayed", "postponed", "cancelled", "suspended",
+    ):
+        if nf in s:
+            return False
     is_final_status = "final" in s or "game over" in s or "completed" in s
     if not is_final_status:
         return False
@@ -106,35 +110,57 @@ def _is_item_final(r: dict) -> bool:
         if f_hs == 0 and f_as == 0:
             return False
         if f_hs == f_as:
-            return False
+            return False  # empate no resuelto / datos malos
         return True
     except (ValueError, TypeError):
         return False
 
 
 def _sanitize_history_row(r: dict) -> dict:
+    """No inventar HIT. Solo graded si Final + scores + comparación real."""
     row = dict(r)
-    d = str(row.get("game_date") or "")[:10]
+    # normalizar game_date a YYYY-MM-DD
+    gd = row.get("game_date")
+    if gd is not None:
+        row["game_date"] = str(gd)[:10]
+
     if not _is_item_final(row):
         row["graded"] = False
         row["correct"] = None
         row["units"] = 0
         row["home_win_actual"] = None
-    elif d in ["2026-08-29", "2026-08-30"]:
-        hs = row.get("home_score")
-        as_ = row.get("away_score")
-        pred_winner = row.get("predicted_winner")
-        home = row.get("home_team_abbr")
-        if hs is not None and as_ is not None and not (float(hs) == 0 and float(as_) == 0):
-            h_won = float(hs) > float(as_)
-            pred_home = 1 if pred_winner == home else 0
-            row["correct"] = 1.0 if (h_won and pred_home == 1) or (not h_won and pred_home == 0) else 0.0
-            row["graded"] = True
-            row["units"] = 1.0 if row["correct"] == 1.0 else -1.0
-        else:
-            row["graded"] = True
-            row["correct"] = 1.0
-            row["units"] = 1.0
+        return row
+
+    try:
+        hs = float(row.get("home_score"))
+        as_ = float(row.get("away_score"))
+    except (TypeError, ValueError):
+        row["graded"] = False
+        row["correct"] = None
+        row["units"] = 0
+        return row
+
+    h_won = hs > as_
+    pred_winner = str(row.get("predicted_winner") or row.get("winner") or "").upper()
+    home = str(row.get("home_team_abbr") or row.get("home") or "").upper()
+    away = str(row.get("away_team_abbr") or row.get("away") or "").upper()
+    if pred_winner == home:
+        pred_home = 1
+    elif pred_winner == away:
+        pred_home = 0
+    elif row.get("pred_home") is not None:
+        try:
+            pred_home = int(row["pred_home"])
+        except Exception:
+            pred_home = 1 if float(row.get("home_win_prob") or 0.5) >= 0.5 else 0
+    else:
+        pred_home = 1 if float(row.get("home_win_prob") or 0.5) >= 0.5 else 0
+
+    correct = 1.0 if pred_home == (1 if h_won else 0) else 0.0
+    row["graded"] = True
+    row["correct"] = correct
+    row["units"] = 1.0 if correct == 1.0 else -1.0
+    row["home_win_actual"] = 1 if h_won else 0
     return row
 
 
@@ -638,6 +664,30 @@ def api_odds():
                 "lines": lines, "source": "the-odds-api"}
     except Exception as e:
         return {"configured": True, "error": str(e), "lines": []}
+
+
+
+@app.get("/api/dates")
+def api_dates():
+    """Lista de fechas con predicciones guardadas (acumuladas) + hoy."""
+    PRED_DIR.mkdir(parents=True, exist_ok=True)
+    days = set()
+    for pattern in ("preds_*.json", "preds_*.csv", "preds_*.feather"):
+        for f in PRED_DIR.glob(pattern):
+            day = f.stem.replace("preds_", "")[:10]
+            if len(day) == 10 and day[4] == "-":
+                days.add(day)
+    # también fechas del historial graded
+    try:
+        for r in _load_history():
+            gd = str(r.get("game_date") or "")[:10]
+            if len(gd) == 10:
+                days.add(gd)
+    except Exception:
+        pass
+    days.add(date.today().isoformat())
+    ordered = sorted(days, reverse=True)
+    return {"count": len(ordered), "dates": ordered, "live": True}
 
 
 @app.get("/api/preds")

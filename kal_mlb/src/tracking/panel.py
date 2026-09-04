@@ -27,20 +27,46 @@ RESULTS.mkdir(parents=True, exist_ok=True)
 
 
 def load_all_predictions() -> pd.DataFrame:
+    """Carga TODAS las predicciones guardadas (feather, csv y json) para no perder días."""
     frames = []
+    seen_days = set()
+
     for p in sorted(PREDS.glob("preds_*.feather")):
         try:
             df = pd.read_feather(p)
             df["source_file"] = p.name
             frames.append(df)
+            seen_days.add(p.stem.replace("preds_", "")[:10])
         except Exception as e:
             logger.warning("Skip %s: %s", p.name, e)
-    # also csv fallback
-    if not frames:
-        for p in sorted(PREDS.glob("preds_*.csv")):
+
+    for p in sorted(PREDS.glob("preds_*.csv")):
+        day = p.stem.replace("preds_", "")[:10]
+        if day in seen_days:
+            continue
+        try:
             df = pd.read_csv(p)
             df["source_file"] = p.name
             frames.append(df)
+            seen_days.add(day)
+        except Exception as e:
+            logger.warning("Skip %s: %s", p.name, e)
+
+    for p in sorted(PREDS.glob("preds_*.json")):
+        day = p.stem.replace("preds_", "")[:10]
+        if day in seen_days:
+            continue
+        try:
+            rows = json.loads(p.read_text(encoding="utf-8"))
+            if not rows:
+                continue
+            df = pd.DataFrame(rows)
+            df["source_file"] = p.name
+            frames.append(df)
+            seen_days.add(day)
+        except Exception as e:
+            logger.warning("Skip %s: %s", p.name, e)
+
     if not frames:
         return pd.DataFrame()
     out = pd.concat(frames, ignore_index=True)
@@ -119,7 +145,8 @@ def fetch_final_scores(game_pks: list[int]) -> pd.DataFrame:
     if missing:
         fetcher = MLBDataFetcher()
         # refresh yesterday→tomorrow window
-        d0 = date.today() - timedelta(days=2)
+        # Ventana amplia: partidos de varios días atrás deben calificarse
+        d0 = date.today() - timedelta(days=14)
         d1 = date.today() + timedelta(days=1)
         try:
             live = fetcher.get_schedule(d0.isoformat(), d1.isoformat())

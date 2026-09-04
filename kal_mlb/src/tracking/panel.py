@@ -162,7 +162,11 @@ def fetch_final_scores(game_pks: list[int]) -> pd.DataFrame:
         return pd.DataFrame(columns=["game_pk", "home_score", "away_score", "home_win_actual", "status"])
     done = done.drop_duplicates("game_pk", keep="last")
     done["home_win_actual"] = (done["home_score"] > done["away_score"]).astype(int)
-    return done[["game_pk", "home_score", "away_score", "home_win_actual", "status"]].copy()
+    # status_final para no chocar con status de preds
+    out = done[["game_pk", "home_score", "away_score", "home_win_actual"]].copy()
+    if "status" in done.columns:
+        out["status_final"] = done["status"].values
+    return out
 
 
 def grade_predictions(preds: pd.DataFrame | None = None) -> pd.DataFrame:
@@ -177,8 +181,37 @@ def grade_predictions(preds: pd.DataFrame | None = None) -> pd.DataFrame:
         logger.info("No final scores available yet for pending predictions")
         return preds.assign(graded=False, correct=np.nan, units=np.nan)
 
-    m = preds.merge(scores, on="game_pk", how="left")
-    m["graded"] = m["home_win_actual"].notna()
+    # Evitar columnas duplicadas (status ya puede existir en preds)
+    scores_clean = scores.copy()
+    for col in list(scores_clean.columns):
+        if col != "game_pk" and col in preds.columns:
+            scores_clean = scores_clean.rename(columns={col: f"{col}_final"})
+    m = preds.merge(scores_clean, on="game_pk", how="left")
+    # unificar scores
+    if "home_score_final" in m.columns:
+        m["home_score"] = (
+            m["home_score_final"].combine_first(m["home_score"])
+            if "home_score" in m.columns
+            else m["home_score_final"]
+        )
+    if "away_score_final" in m.columns:
+        m["away_score"] = (
+            m["away_score_final"].combine_first(m["away_score"])
+            if "away_score" in m.columns
+            else m["away_score_final"]
+        )
+    if "status_final" in m.columns:
+        m["status"] = (
+            m["status_final"].combine_first(m["status"])
+            if "status" in m.columns
+            else m["status_final"]
+        )
+    if "home_win_actual_final" in m.columns:
+        if "home_win_actual" in m.columns:
+            m["home_win_actual"] = m["home_win_actual_final"].combine_first(m["home_win_actual"])
+        else:
+            m["home_win_actual"] = m["home_win_actual_final"]
+    m["graded"] = m["home_win_actual"].notna() if "home_win_actual" in m.columns else False
     m["pred_home"] = (m["home_win_prob"] >= 0.5).astype(int)
     m["correct"] = np.where(
         m["graded"],

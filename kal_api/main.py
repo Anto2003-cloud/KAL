@@ -663,7 +663,19 @@ def api_odds():
                 "with_prices": sum(1 for L in lines if L.get("home_decimal")),
                 "lines": lines, "source": "the-odds-api"}
     except Exception as e:
-        return {"configured": True, "error": str(e), "lines": []}
+        err = str(e)
+        dead = "401" in err or "Unauthorized" in err or "403" in err
+        return {
+            "configured": not dead,
+            "error": (
+                "ODDS_API_KEY inválida o sin crédito (401). Renueva la clave en the-odds-api.com y pégala en Railway → Variables."
+                if dead
+                else err
+            ),
+            "lines": [],
+            "count": 0,
+            "with_prices": 0,
+        }
 
 
 
@@ -856,6 +868,31 @@ def panel():
     p = _load_panel()
     p["live"] = True
     return p
+
+
+
+@app.post("/api/run/regrade")
+def api_regrade(x_kal_secret: str | None = Header(None)):
+    """Recalifica todas las predicciones guardadas y reescribe panel/historial."""
+    _check_secret(x_kal_secret)
+    try:
+        from src.tracking.panel import update_tracking, grade_predictions
+        graded = grade_predictions()
+        panel = update_tracking()
+        n = int(panel.get("n_graded") or 0)
+        return {
+            "ok": True,
+            "n_graded": n,
+            "record": panel.get("record"),
+            "hits": panel.get("hits"),
+            "misses": panel.get("misses"),
+            "panel": panel,
+            "rows": 0 if graded is None else len(graded),
+        }
+    except Exception as e:
+        log.exception("regrade")
+        return {"ok": False, "error": str(e)}
+
 
 
 @app.post("/api/run/cycle")

@@ -587,6 +587,131 @@ def api_public_splits():
             "fade_threshold": fade_threshold, "splits": splits}
 
 
+
+def _fetch_odds_api_io(key: str) -> dict | None:
+    """Odds-API.io free: 100 req/h forever. sport=baseball o mlb."""
+    import requests
+    name_to_abbr = {
+        "arizona diamondbacks": "ARI", "atlanta braves": "ATL", "baltimore orioles": "BAL",
+        "boston red sox": "BOS", "chicago cubs": "CHC", "chicago white sox": "CWS",
+        "cincinnati reds": "CIN", "cleveland guardians": "CLE", "colorado rockies": "COL",
+        "detroit tigers": "DET", "houston astros": "HOU", "kansas city royals": "KC",
+        "los angeles angels": "LAA", "los angeles dodgers": "LAD", "miami marlins": "MIA",
+        "milwaukee brewers": "MIL", "minnesota twins": "MIN", "new york mets": "NYM",
+        "new york yankees": "NYY", "oakland athletics": "ATH", "athletics": "ATH",
+        "sacramento athletics": "ATH", "philadelphia phillies": "PHI", "pittsburgh pirates": "PIT",
+        "san diego padres": "SD", "san francisco giants": "SF", "seattle mariners": "SEA",
+        "st. louis cardinals": "STL", "st louis cardinals": "STL", "tampa bay rays": "TB",
+        "texas rangers": "TEX", "toronto blue jays": "TOR", "washington nationals": "WSH",
+    }
+    def abbr(n):
+        return name_to_abbr.get((n or "").strip().lower())
+
+    preferred_books = ["FanDuel", "DraftKings", "BetMGM", "Bet365", "Bovada", "BetRivers"]
+    # 1) eventos MLB
+    events = []
+    for sport in ("mlb", "baseball"):
+        try:
+            r = requests.get(
+                "https://api.odds-api.io/v3/events",
+                params={"apiKey": key, "sport": sport, "limit": 40},
+                timeout=25,
+            )
+            if r.ok:
+                data = r.json()
+                if isinstance(data, list) and data:
+                    events = data
+                    break
+        except Exception as e:
+            log.warning("odds-api.io events %s: %s", sport, e)
+    if not events:
+        return None
+
+    # multi odds (1 credit for up to 10 events)
+    lines = []
+    for i in range(0, min(len(events), 30), 10):
+        chunk = events[i : i + 10]
+        ids = ",".join(str(e.get("id")) for e in chunk if e.get("id") is not None)
+        if not ids:
+            continue
+        try:
+            r = requests.get(
+                "https://api.odds-api.io/v3/odds/multi",
+                params={
+                    "apiKey": key,
+                    "eventIds": ids,
+                    "bookmakers": ",".join(preferred_books),
+                },
+                timeout=30,
+            )
+            if not r.ok:
+                log.warning("odds-api.io multi %s", r.status_code)
+                continue
+            payload = r.json()
+            # puede ser list o dict id->odds
+            items = payload if isinstance(payload, list) else list((payload or {}).values())
+            by_id = {}
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                eid = item.get("id")
+                by_id[str(eid)] = item
+            for ev in chunk:
+                eid = str(ev.get("id"))
+                home = ev.get("home") or (by_id.get(eid) or {}).get("home")
+                away = ev.get("away") or (by_id.get(eid) or {}).get("away")
+                od = by_id.get(eid) or {}
+                books = od.get("bookmakers") or {}
+                chosen_name = None
+                hd = ad = None
+                for pref in preferred_books:
+                    raw = books.get(pref)
+                    if not raw:
+                        continue
+                    # lista de markets
+                    markets = raw if isinstance(raw, list) else []
+                    ml = next((m for m in markets if str(m.get("name") or "").upper() in ("ML", "H2H", "MONEYLINE", "1X2")), None)
+                    if not ml:
+                        ml = markets[0] if markets else None
+                    if not ml:
+                        continue
+                    odds_list = ml.get("odds") or []
+                    if not odds_list:
+                        continue
+                    o0 = odds_list[0] if isinstance(odds_list[0], dict) else {}
+                    try:
+                        hd = float(o0.get("home"))
+                        ad = float(o0.get("away"))
+                    except (TypeError, ValueError):
+                        continue
+                    if hd and ad and 1.05 <= hd <= 25 and 1.05 <= ad <= 25:
+                        chosen_name = pref
+                        break
+                lines.append({
+                    "home": home,
+                    "away": away,
+                    "home_abbr": abbr(home),
+                    "away_abbr": abbr(away),
+                    "home_decimal": hd,
+                    "away_decimal": ad,
+                    "book": chosen_name,
+                })
+        except Exception as e:
+            log.warning("odds-api.io multi: %s", e)
+
+    with_prices = sum(1 for L in lines if L.get("home_decimal"))
+    if with_prices == 0:
+        return None
+    return {
+        "configured": True,
+        "count": len(lines),
+        "with_prices": with_prices,
+        "lines": lines,
+        "source": "odds-api.io",
+    }
+
+
+
 def _odds_cache_path():
     RESULTS.mkdir(parents=True, exist_ok=True)
     return RESULTS / "odds_cache.json"
@@ -645,6 +770,19 @@ def api_odds(force: bool = Query(False, description="Ignorar caché y llamar The
             cached["configured"] = True
             cached["source"] = (cached.get("source") or "the-odds-api") + "+cache"
             return cached
+
+    # 1) Odds-API.io (free 100/h, se reinicia cada hora — casi ilimitado con caché)
+    io_key = os.environ.get("ODDS_API_IO_KEY") or os.environ.get("ODDS_API_IO") or ""
+    if io_key:
+        try:
+            io_payload = _fetch_odds_api_io(io_key)
+            if io_payload and io_payload.get("with_prices"):
+                _save_odds_cache(io_payload)
+                return io_payload
+        except Exception as e:
+            log.warning("odds-api.io: %s", e)
+
+    # 2) The Odds API (créditos mensuales)
     preferred = ["fanduel", "draftkings", "betmgm", "williamhill_us", "betrivers", "bovada"]
     name_to_abbr = {
         "arizona diamondbacks": "ARI", "atlanta braves": "ATL", "baltimore orioles": "BAL",

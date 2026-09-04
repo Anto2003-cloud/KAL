@@ -262,9 +262,28 @@ def _bootstrap_volume_from_seed():
 
 
 def run_cycle() -> dict:
-    """Ejecuta el ciclo autónomo completo (intel → pred → grade → retrain gate)."""
+    """Ejecuta el ciclo autónomo completo (grade → intel → pred → retrain gate)."""
     log.info("=== KAL autonomous cycle start ===")
     report: dict[str, Any] = {"started_at": datetime.now(timezone.utc).isoformat()}
+
+    # BUG ARREGLADO: la calificación (update_tracking) corría DESPUÉS del
+    # pipeline de predicciones nuevas (auto_run/run_pipeline). Si ese paso
+    # pesado fallaba (timeout de la API de MLB, lo que sea) y el fallback
+    # TAMBIÉN fallaba, la excepción se escapaba hacia el try externo y la
+    # calificación nunca llegaba a correr esa vez — aunque no dependa para
+    # nada de que las predicciones nuevas hayan funcionado. Resultado real:
+    # partidos ya terminados quedaban en "Pendiente" indefinidamente cada
+    # vez que el pipeline tenía un mal ciclo. Ahora la calificación va
+    # PRIMERO, con su propio try/except, y corre siempre pase lo que pase
+    # con el resto del ciclo.
+    try:
+        from src.tracking.panel import update_tracking
+
+        report["panel_refresh"] = update_tracking()
+    except Exception as ex:
+        report["panel_refresh_error"] = str(ex)
+        log.exception("grading (update_tracking) failed")
+
     try:
         # prefer package autonomous
         try:
@@ -272,17 +291,22 @@ def run_cycle() -> dict:
             report["result"] = auto_run()
         except Exception as e1:
             log.warning("autonomous.run failed: %s — fallback pipeline", e1)
-            from src.pipeline_daily import run_pipeline
-            report["result"] = run_pipeline()
+            try:
+                from src.pipeline_daily import run_pipeline
+                report["result"] = run_pipeline()
+            except Exception as e2:
+                report["pipeline_error"] = str(e2)
+                log.exception("fallback pipeline also failed")
         # always try export json for API
         try:
             _export_today_json()
         except Exception as ex:
             report["export_error"] = str(ex)
+        # re-calificar otra vez por si el pipeline generó predicciones nuevas
+        # que ya tenían marcador final (poco común, pero barato de repetir)
         try:
-            # re-grade and refresh panel json for frontend
-            from src.tracking.panel import update_tracking
-            report["panel_refresh"] = update_tracking()
+            from src.tracking.panel import update_tracking as _regrade
+            report["panel_refresh_2"] = _regrade()
             # alertas HIGH
             try:
                 preds_n = report.get("n_preds") or 0
@@ -301,7 +325,7 @@ def run_cycle() -> dict:
                 report["telegram_error"] = str(te)
 
         except Exception as ex:
-            report["panel_refresh_error"] = str(ex)
+            report["panel_refresh_error_2"] = str(ex)
         _state["last_cycle_at"] = datetime.now(timezone.utc).isoformat()
         _state["last_cycle_ok"] = True
         _state["last_error"] = None

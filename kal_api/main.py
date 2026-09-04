@@ -587,12 +587,64 @@ def api_public_splits():
             "fade_threshold": fade_threshold, "splits": splits}
 
 
+def _odds_cache_path():
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    return RESULTS / "odds_cache.json"
+
+
+def _load_odds_cache(max_age_sec: int = 6 * 3600) -> dict | None:
+    """Caché en disco para no gastar créditos en cada /api/preds o ciclo."""
+    path = _odds_cache_path()
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        ts = data.get("cached_at_ts") or 0
+        import time as _time
+        age = _time.time() - float(ts)
+        data["_cache_age_sec"] = int(age)
+        data["_from_cache"] = True
+        if age <= max_age_sec and data.get("lines"):
+            return data
+        # si está vieja pero tiene líneas, se puede usar como fallback tras error
+        if data.get("lines"):
+            data["_stale"] = True
+            return data
+    except Exception as e:
+        log.warning("odds cache read: %s", e)
+    return None
+
+
+def _save_odds_cache(payload: dict) -> None:
+    try:
+        import time as _time
+        out = dict(payload)
+        out["cached_at_ts"] = _time.time()
+        out["cached_at"] = datetime.now(timezone.utc).isoformat()
+        _odds_cache_path().write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        log.warning("odds cache write: %s", e)
+
+
 @app.get("/api/odds")
-def api_odds():
-    """Proxy The Odds API — prioriza FanDuel/DK y devuelve abbrs."""
+def api_odds(force: bool = Query(False, description="Ignorar caché y llamar The Odds API")):
+    """Proxy The Odds API — prioriza FanDuel/DK. Usa caché 6h para no quemar créditos free."""
     key = os.environ.get("ODDS_API_KEY") or os.environ.get("THE_ODDS_API_KEY") or ""
     if not key:
+        cached = _load_odds_cache(max_age_sec=7 * 24 * 3600)
+        if cached and cached.get("lines"):
+            cached["configured"] = False
+            cached["note"] = "Sin ODDS_API_KEY — sirviendo última caché"
+            return cached
         return {"configured": False, "lines": [], "note": "Define ODDS_API_KEY en Railway"}
+
+    # Caché fresca: no gastar crédito
+    if not force:
+        cached = _load_odds_cache(max_age_sec=6 * 3600)
+        if cached and not cached.get("_stale") and cached.get("lines"):
+            cached["configured"] = True
+            cached["source"] = (cached.get("source") or "the-odds-api") + "+cache"
+            return cached
     preferred = ["fanduel", "draftkings", "betmgm", "williamhill_us", "betrivers", "bovada"]
     name_to_abbr = {
         "arizona diamondbacks": "ARI", "atlanta braves": "ATL", "baltimore orioles": "BAL",
@@ -659,16 +711,36 @@ def api_odds():
                 "home_decimal": hd, "away_decimal": ad,
                 "book": chosen.get("title") or chosen.get("key"),
             })
-        return {"configured": True, "count": len(lines),
-                "with_prices": sum(1 for L in lines if L.get("home_decimal")),
-                "lines": lines, "source": "the-odds-api"}
+        payload = {
+            "configured": True,
+            "count": len(lines),
+            "with_prices": sum(1 for L in lines if L.get("home_decimal")),
+            "lines": lines,
+            "source": "the-odds-api",
+        }
+        _save_odds_cache(payload)
+        return payload
     except Exception as e:
         err = str(e)
-        dead = "401" in err or "Unauthorized" in err or "403" in err
+        dead = "401" in err or "Unauthorized" in err or "403" in err or "429" in err
+        # Fallback: última caché aunque esté vieja
+        cached = _load_odds_cache(max_age_sec=30 * 24 * 3600)
+        if cached and cached.get("lines"):
+            cached["configured"] = True
+            cached["source"] = (cached.get("source") or "cache") + "+stale_fallback"
+            cached["error"] = (
+                "The Odds API sin crédito/401 — usando última caché guardada. "
+                "Sube de plan o espera el reset del 1 de cada mes."
+                if dead
+                else err
+            )
+            cached["note"] = "Caché de respaldo (API de cuotas agotada o error)"
+            return cached
         return {
             "configured": not dead,
             "error": (
-                "ODDS_API_KEY inválida o sin crédito (401). Renueva la clave en the-odds-api.com y pégala en Railway → Variables."
+                "ODDS_API_KEY sin crédito (500/500 free). Plan free se reinicia el día 1 del mes. "
+                "Opciones: upgrade en the-odds-api.com, o espera. KAL usará caché cuando exista."
                 if dead
                 else err
             ),

@@ -18,7 +18,21 @@ import json
 import logging
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
+
+_VE_OFFSET = timedelta(hours=-4)
+
+
+def today_ve() -> date:
+    """
+    'Hoy' en hora de Venezuela (UTC-4 fijo, sin horario de verano), no en
+    hora del servidor (Railway corre en UTC). Sin esto, entre las 8pm y
+    medianoche hora VE el servidor ya cree que es 'mañana' — el scheduler
+    predecía/mostraba el día equivocado desde la perspectiva del usuario,
+    exactamente la causa de que las fechas 'desaparecieran' de golpe en
+    la noche. Mismo fix que todayVE() en el frontend (src/utils/timeVE.ts).
+    """
+    return (datetime.now(timezone.utc) + _VE_OFFSET).date()
 from pathlib import Path
 from typing import Any
 
@@ -371,7 +385,7 @@ def run_cycle() -> dict:
 
 def _export_today_json():
     """Best-effort: copy latest preds to json for the frontend."""
-    day = date.today().isoformat()
+    day = today_ve().isoformat()
     rows = _load_preds(day)
     if rows:
         return
@@ -379,7 +393,7 @@ def _export_today_json():
     try:
         from src.models.predict import predict_date
         import pandas as pd
-        df = predict_date(date.today())
+        df = predict_date(today_ve())
         if df is None or len(df) == 0:
             return
         PRED_DIR.mkdir(parents=True, exist_ok=True)
@@ -413,7 +427,7 @@ def status():
         "mode": "autonomous",
         "state": _state,
         "panel": _load_panel(),
-        "today_preds": len(_load_preds(date.today().isoformat())),
+        "today_preds": len(_load_preds(today_ve().isoformat())),
     }
 
 
@@ -468,7 +482,7 @@ def api_unlock_game(
     el resultado nuevo queda bloqueado desde ahí en adelante, normal.
     """
     _check_secret(x_kal_secret)
-    target = day or date.today().isoformat()
+    target = day or today_ve().isoformat()
     try:
         from src.models.predict import unlock_game, predict_date
 
@@ -496,7 +510,7 @@ def api_backfill(
     try:
         from src.models.predict import predict_date
         from src.tracking.panel import update_tracking
-        today = date.today()
+        today = today_ve()
         for i in range(days, 0, -1):
             d = today - timedelta(days=i)
             try:
@@ -1198,7 +1212,7 @@ def api_dates():
                 days.add(gd)
     except Exception:
         pass
-    days.add(date.today().isoformat())
+    days.add(today_ve().isoformat())
     ordered = sorted(days, reverse=True)
     return {"count": len(ordered), "dates": ordered, "live": True}
 
@@ -1206,7 +1220,7 @@ def api_dates():
 @app.get("/api/preds")
 def preds(date_str: str | None = Query(None, alias="date")):
     """Predicciones + hora MLB + moneyline casa (FanDuel/DK)."""
-    day = date_str or date.today().isoformat()
+    day = date_str or today_ve().isoformat()
     rows = [dict(r) for r in _load_preds(day)]
 
     # Horarios MLB

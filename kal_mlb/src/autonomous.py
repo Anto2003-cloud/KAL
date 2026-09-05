@@ -39,18 +39,35 @@ def run() -> dict:
         report["steps"]["intel"] = {"error": str(e)}
     # 2 pipeline / preds
     try:
-        from src.pipeline_daily import run_daily
-        report["steps"]["pipeline"] = run_daily()
+        # BUG CRÍTICO ARREGLADO: este import decía 'run_daily', que no
+        # existe en NINGÚN lado del código — solo existe 'run_pipeline'.
+        # Esto significaba que el pipeline completo (features, park
+        # factors, bullpen, intel) fallaba con ImportError en TODAS las
+        # corridas desde siempre, cayendo siempre al fallback de abajo
+        # (que TAMBIÉN estaba roto — ver el otro fix debajo). Las
+        # predicciones que sí aparecían venían de un mecanismo de
+        # respaldo aparte en kal_api/main.py (_export_today_json), que
+        # solo corre UNA VEZ por día si no hay nada guardado — nunca
+        # refrescaba con datos actualizados durante el resto del día.
+        from src.pipeline_daily import run_pipeline
+        from datetime import timezone, timedelta
+
+        today = (datetime.now(timezone.utc) + timedelta(hours=-4)).date()
+        report["steps"]["pipeline"] = run_pipeline(predict_dates=[today, today + timedelta(days=1)])
     except Exception as e:
         logger.exception("pipeline")
         # fallback: predict only
         try:
-            from src.models.predict import predict_day, print_predictions
-            import pandas as pd
-            from datetime import date
-            df = predict_day(date.today().isoformat())
+            # BUG ARREGLADO: 'predict_day' tampoco existe — la función real
+            # es 'predict_date'. Y date.today() es hora del servidor (UTC
+            # en Railway), no hora de Venezuela.
+            from src.models.predict import predict_date, print_predictions
+            from datetime import timezone, timedelta
+
+            today = (datetime.now(timezone.utc) + timedelta(hours=-4)).date()
+            df = predict_date(today)
             print_predictions(df)
-            report["steps"]["pipeline"] = {"fallback": "predict_day", "n": len(df)}
+            report["steps"]["pipeline"] = {"fallback": "predict_date", "n": len(df)}
         except Exception as e2:
             report["steps"]["pipeline"] = {"error": str(e), "fallback_error": str(e2)}
     # 3 tracking

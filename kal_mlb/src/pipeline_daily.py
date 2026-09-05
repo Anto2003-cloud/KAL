@@ -51,7 +51,12 @@ def run_pipeline(
 
     # 2. Predictions for today + tomorrow
     if predict_dates is None:
-        predict_dates = [date.today(), date.today() + timedelta(days=1)]
+        # Hora de Venezuela, no la del servidor (UTC en Railway) — ver
+        # mismo fix en kal_api/main.py::today_ve() y src/autonomous.py.
+        from datetime import timezone
+
+        today_ve = (datetime.now(timezone.utc) + timedelta(hours=-4)).date()
+        predict_dates = [today_ve, today_ve + timedelta(days=1)]
 
     logger.info("[2/4] Generating predictions ...")
     all_preds = []

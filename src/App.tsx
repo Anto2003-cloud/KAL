@@ -11,6 +11,7 @@ import { ParlayLab } from './components/ParlayLab';
 import type { KalParlaySlip } from './utils/parlayEngine';
 import { fetchLivePreds,
   fetchAvailableDates, fetchLivePanel, fetchLiveStatus, isLiveConfigured, fetchLiveHistory } from './data/liveApi';
+import { todayVE } from './utils/timeVE';
 import { fetchMlbMoneylineOdds, findMarketLine, type MarketLine } from './utils/marketOdds';
 import { fetchPublicSplits, applyPublicFadeToList, type PublicSplit } from './utils/publicBetting';
 import { autoGradeParlays } from './utils/parlayEngine';
@@ -26,7 +27,7 @@ import { Search } from 'lucide-react';
 
 export default function App() {
   const [availableApiDates, setAvailableApiDates] = useState<string[]>([]);
-  const [activeDate, setActiveDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [activeDate, setActiveDate] = useState<string>(() => todayVE());
   const [activeTab, setActiveTab] = useState<'preds' | 'pillars' | 'history' | 'lab' | 'parlay'>('preds');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedConfidence, setSelectedConfidence] = useState<string>('HIGH');
@@ -85,7 +86,7 @@ export default function App() {
       setLiveNote(
         `Conectado · récord ${rec} · ${n} graded · preds hoy ${st.raw?.today_preds ?? '—'}`
       );
-      const day = activeDate || new Date().toISOString().slice(0, 10);
+      const day = activeDate || todayVE();
       const [preds, panel] = await Promise.all([
         fetchLivePreds(day),
         fetchLivePanel(),
@@ -182,7 +183,7 @@ export default function App() {
     };
   }, [activeDate]);
 
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayVE();
   const availableDates = Array.from(
     new Set([
       todayIso,

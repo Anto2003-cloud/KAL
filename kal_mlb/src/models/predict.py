@@ -719,6 +719,10 @@ if __name__ == "__main__":
         format="%(asctime)s | %(levelname)-7s | %(message)s",
         datefmt="%H:%M:%S",
     )
-    target = date.today()
+    # Hora de Venezuela (UTC-4), no la del servidor — mismo motivo que
+    # today_ve() en kal_api/main.py y todayVE() en el frontend.
+    from datetime import timezone, timedelta
+
+    target = (datetime.now(timezone.utc) + timedelta(hours=-4)).date()
     preds = predict_date(target, save=True)
     print_predictions(preds)

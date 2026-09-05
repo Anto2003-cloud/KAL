@@ -588,6 +588,150 @@ def api_public_splits():
 
 
 
+MLB_TEAM_NAMES = {
+    "arizona diamondbacks": "ARI", "atlanta braves": "ATL", "baltimore orioles": "BAL",
+    "boston red sox": "BOS", "chicago cubs": "CHC", "chicago white sox": "CWS",
+    "cincinnati reds": "CIN", "cleveland guardians": "CLE", "colorado rockies": "COL",
+    "detroit tigers": "DET", "houston astros": "HOU", "kansas city royals": "KC",
+    "los angeles angels": "LAA", "los angeles dodgers": "LAD", "miami marlins": "MIA",
+    "milwaukee brewers": "MIL", "minnesota twins": "MIN", "new york mets": "NYM",
+    "new york yankees": "NYY", "oakland athletics": "ATH", "athletics": "ATH",
+    "philadelphia phillies": "PHI", "pittsburgh pirates": "PIT", "san diego padres": "SD",
+    "san francisco giants": "SF", "seattle mariners": "SEA", "st. louis cardinals": "STL",
+    "st louis cardinals": "STL", "tampa bay rays": "TB", "texas rangers": "TEX",
+    "toronto blue jays": "TOR", "washington nationals": "WSH",
+}
+
+
+def _fetch_polymarket_odds() -> dict | None:
+    """
+    Polymarket Gamma API — pública, SIN key, SIN límite de cuota mensual
+    (a diferencia de The Odds API / Odds-API.io). Documentada oficialmente
+    en docs.polymarket.com (no es reverse-engineering como el caso de
+    ESPN). Es un mercado de predicción, no una casa de apuestas
+    tradicional: el precio de cada equipo (0 a 1) es la probabilidad
+    implícita que le da el mercado, no una cuota con vig — se convierte
+    directo a "decimal" como 1/precio para encajar en el resto del
+    sistema (misma matemática que ya usa el proyecto en otros lados).
+
+    No se pudo probar contra una respuesta real desde este entorno (sin
+    salida de red a polymarket.com) — la URL, parámetros y forma de la
+    respuesta (outcomes/outcomePrices como strings JSON, event.sports.
+    teams con ordering home/away) están tomados de la documentación
+    oficial, pero el filtro exacto para aislar "solo MLB" no está 100%
+    verificado (se filtra por nombre de equipo conocido como red de
+    seguridad, no solo por un parámetro de liga que no pude confirmar).
+    """
+    import requests
+
+    try:
+        r = requests.get(
+            "https://gamma-api.polymarket.com/events",
+            params={"closed": "false", "active": "true", "limit": 200, "tag_slug": "mlb"},
+            timeout=20,
+        )
+        if not r.ok or not (r.json() or []):
+            # el tag_slug=mlb puede no ser el filtro correcto — reintentar sin filtro de liga
+            r = requests.get(
+                "https://gamma-api.polymarket.com/events",
+                params={"closed": "false", "active": "true", "limit": 500},
+                timeout=20,
+            )
+        if not r.ok:
+            log.warning("polymarket odds: status %s", r.status_code)
+            return None
+        events = r.json()
+    except Exception as e:
+        log.warning("polymarket odds: %s", e)
+        return None
+
+    if not isinstance(events, list):
+        return None
+
+    import json as _json
+
+    lines = []
+    for ev in events:
+        markets = ev.get("markets") or []
+        for mk in markets:
+            question = str(mk.get("question") or "").lower()
+            # Solo moneylines de partido a partido — no futures/season-long
+            if mk.get("sportsMarketType") not in (None, "moneyline", "game_winner"):
+                continue
+            try:
+                outcomes = _json.loads(mk.get("outcomes") or "[]")
+                prices = [float(p) for p in _json.loads(mk.get("outcomePrices") or "[]")]
+            except Exception:
+                continue
+            if len(outcomes) != 2 or len(prices) != 2:
+                continue
+
+            # Identificar equipos por nombre conocido (red de seguridad,
+            # no depende de que sports.teams venga siempre poblado)
+            matched = []
+            for name in outcomes:
+                n = str(name).lower().strip()
+                abbr = MLB_TEAM_NAMES.get(n)
+                if not abbr:
+                    # intento parcial: "yankees" dentro de "new york yankees"
+                    abbr = next((v for k, v in MLB_TEAM_NAMES.items() if n in k or k in n), None)
+                matched.append(abbr)
+            if not all(matched):
+                continue  # no es un partido de MLB reconocible, se omite
+
+            team_a, team_b = matched
+            price_a, price_b = prices
+            if not (0.01 <= price_a <= 0.99 and 0.01 <= price_b <= 0.99):
+                continue
+
+            # Home/away confiable: usar event.sports.teams[].ordering
+            # (documentado oficialmente) cuando esté presente, en vez de
+            # asumir que el orden del array outcomes es home-primero.
+            home_abbr = away_abbr = None
+            sports_teams = ((ev.get("sports") or {}).get("teams")) or []
+            for t in sports_teams:
+                t_abbr = MLB_TEAM_NAMES.get(str(t.get("name") or "").lower().strip())
+                if t_abbr not in (team_a, team_b):
+                    continue
+                if t.get("ordering") == "home":
+                    home_abbr = t_abbr
+                elif t.get("ordering") == "away":
+                    away_abbr = t_abbr
+
+            if home_abbr and away_abbr:
+                home_price = price_a if team_a == home_abbr else price_b
+                away_price = price_b if team_a == home_abbr else price_a
+            else:
+                # sin ordering confiable, se usa el orden del array tal cual
+                # (puede no ser home-primero — mejor que nada, pero avisado
+                # en el docstring de la función como limitación conocida)
+                home_abbr, away_abbr = team_a, team_b
+                home_price, away_price = price_a, price_b
+
+            lines.append({
+                "home": home_abbr, "away": away_abbr,
+                "home_abbr": home_abbr, "away_abbr": away_abbr,
+                "home_decimal": round(1 / home_price, 4),
+                "away_decimal": round(1 / away_price, 4),
+                "book": "Polymarket",
+            })
+
+    if not lines:
+        log.warning(
+            "polymarket odds: 0 partidos de MLB reconocidos — puede ser que hoy no "
+            "haya mercados de MLB abiertos, o que el filtro de nombre de equipo no "
+            "esté encajando con el formato real de 'outcomes'"
+        )
+        return None
+    return {
+        "configured": True,
+        "count": len(lines),
+        "with_prices": len(lines),
+        "lines": lines,
+        "source": "polymarket",
+    }
+
+
 def _fetch_espn_odds() -> dict | None:
     """
     Endpoint NO OFICIAL de ESPN (site.api.espn.com) — no requiere key ni
@@ -905,6 +1049,16 @@ def api_odds(force: bool = Query(False, description="Ignorar caché y llamar The
             return espn_payload
     except Exception as e:
         log.warning("espn odds top-level: %s", e)
+
+    # 0.5) Polymarket — gratis, sin key, sin límite de cuota mensual
+    # (documentado oficialmente, ver _fetch_polymarket_odds)
+    try:
+        poly_payload = _fetch_polymarket_odds()
+        if poly_payload and poly_payload.get("with_prices"):
+            _save_odds_cache(poly_payload)
+            return poly_payload
+    except Exception as e:
+        log.warning("polymarket odds top-level: %s", e)
 
     # 1) Odds-API.io (free con key, se reinicia cada hora — casi ilimitado con caché)
     io_key = os.environ.get("ODDS_API_IO_KEY") or os.environ.get("ODDS_API_IO") or ""

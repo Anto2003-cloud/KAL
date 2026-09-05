@@ -588,6 +588,105 @@ def api_public_splits():
 
 
 
+def _fetch_espn_odds() -> dict | None:
+    """
+    Endpoint NO OFICIAL de ESPN (site.api.espn.com) — no requiere key ni
+    registro de ningún tipo. No es una API pública documentada por ESPN
+    (puede cambiar de esquema o dejar de existir sin aviso), así que este
+    código se escribió de forma defensiva: si algún campo esperado no
+    aparece, se omite ese partido puntual (o toda la fuente) en vez de
+    fallar. No se pudo probar contra la respuesta real desde este entorno
+    (sin salida de red a espn.com) — validar en un entorno con red real
+    antes de confiar del todo, igual que con Statcast.
+
+    Estructura esperada (según reportes de terceros, no doc oficial):
+    events[].competitions[0].odds[0].homeTeamOdds.moneyLine /
+    awayTeamOdds.moneyLine (americana, no decimal).
+    """
+    import requests
+
+    try:
+        r = requests.get(
+            "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard",
+            timeout=20,
+        )
+        if not r.ok:
+            log.warning("espn odds: status %s", r.status_code)
+            return None
+        data = r.json()
+    except Exception as e:
+        log.warning("espn odds: %s", e)
+        return None
+
+    events = data.get("events") or []
+    if not events:
+        return None
+
+    def american_to_decimal(am) -> float | None:
+        try:
+            am = float(am)
+        except (TypeError, ValueError):
+            return None
+        if am > 0:
+            return round(1 + am / 100, 4)
+        if am < 0:
+            return round(1 + 100 / abs(am), 4)
+        return None
+
+    lines = []
+    for ev in events:
+        comps = ev.get("competitions") or []
+        if not comps:
+            continue
+        comp = comps[0]
+        competitors = comp.get("competitors") or []
+        home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+        away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+        if not home or not away:
+            continue
+        home_abbr = (home.get("team") or {}).get("abbreviation")
+        away_abbr = (away.get("team") or {}).get("abbreviation")
+        home_name = (home.get("team") or {}).get("displayName")
+        away_name = (away.get("team") or {}).get("displayName")
+
+        odds_arr = comp.get("odds") or []
+        if not odds_arr:
+            lines.append({
+                "home": home_name, "away": away_name,
+                "home_abbr": home_abbr, "away_abbr": away_abbr,
+                "home_decimal": None, "away_decimal": None, "book": None,
+            })
+            continue
+        o = odds_arr[0]
+        home_ml = ((o.get("homeTeamOdds") or {}).get("moneyLine"))
+        away_ml = ((o.get("awayTeamOdds") or {}).get("moneyLine"))
+        hd = american_to_decimal(home_ml)
+        ad = american_to_decimal(away_ml)
+        book = (o.get("provider") or {}).get("name") or "ESPN BET"
+        lines.append({
+            "home": home_name, "away": away_name,
+            "home_abbr": home_abbr, "away_abbr": away_abbr,
+            "home_decimal": hd, "away_decimal": ad,
+            "book": book if hd and ad else None,
+        })
+
+    with_prices = sum(1 for L in lines if L.get("home_decimal"))
+    if with_prices == 0:
+        log.warning(
+            "espn odds: %d eventos pero 0 con cuota parseada — probable cambio "
+            "de schema no oficial, revisar homeTeamOdds/moneyLine",
+            len(lines),
+        )
+        return None
+    return {
+        "configured": True,
+        "count": len(lines),
+        "with_prices": with_prices,
+        "lines": lines,
+        "source": "espn-unofficial",
+    }
+
+
 def _fetch_odds_api_io(key: str) -> dict | None:
     """Odds-API.io free: 100 req/h forever. sport=baseball o mlb."""
     import requests
@@ -777,25 +876,37 @@ def _save_odds_cache(payload: dict) -> None:
 
 @app.get("/api/odds")
 def api_odds(force: bool = Query(False, description="Ignorar caché y llamar The Odds API")):
-    """Proxy The Odds API — prioriza FanDuel/DK. Usa caché 6h para no quemar créditos free."""
-    key = os.environ.get("ODDS_API_KEY") or os.environ.get("THE_ODDS_API_KEY") or ""
-    if not key:
-        cached = _load_odds_cache(max_age_sec=7 * 24 * 3600)
-        if cached and cached.get("lines"):
-            cached["configured"] = False
-            cached["note"] = "Sin ODDS_API_KEY — sirviendo última caché"
-            return cached
-        return {"configured": False, "lines": [], "note": "Define ODDS_API_KEY en Railway"}
+    """
+    Cuotas de casas de apuestas, con varias fuentes en cascada (ninguna
+    obligatoria por separado):
+      1) ESPN no oficial — gratis, sin key, sin registro (ver _fetch_espn_odds)
+      2) Odds-API.io — gratis con key (ODDS_API_IO_KEY)
+      3) The Odds API — créditos mensuales (ODDS_API_KEY)
+      4) Última caché guardada, aunque esté vieja
 
-    # Caché fresca: no gastar crédito
+    BUG ARREGLADO: antes esta función retornaba temprano si ODDS_API_KEY
+    no estaba seteada, SIN intentar Odds-API.io ni ninguna otra fuente —
+    dejaba todo sin cuotas incluso teniendo otras fuentes configuradas.
+    """
+    key = os.environ.get("ODDS_API_KEY") or os.environ.get("THE_ODDS_API_KEY") or ""
+
+    # Caché fresca: no gastar crédito ni pegarle a nada de nuevo
     if not force:
         cached = _load_odds_cache(max_age_sec=6 * 3600)
         if cached and not cached.get("_stale") and cached.get("lines"):
             cached["configured"] = True
-            cached["source"] = (cached.get("source") or "the-odds-api") + "+cache"
             return cached
 
-    # 1) Odds-API.io (free 100/h, se reinicia cada hora — casi ilimitado con caché)
+    # 0) ESPN no oficial — gratis, sin key, primera opción siempre
+    try:
+        espn_payload = _fetch_espn_odds()
+        if espn_payload and espn_payload.get("with_prices"):
+            _save_odds_cache(espn_payload)
+            return espn_payload
+    except Exception as e:
+        log.warning("espn odds top-level: %s", e)
+
+    # 1) Odds-API.io (free con key, se reinicia cada hora — casi ilimitado con caché)
     io_key = os.environ.get("ODDS_API_IO_KEY") or os.environ.get("ODDS_API_IO") or ""
     if io_key:
         try:
@@ -824,6 +935,8 @@ def api_odds(force: bool = Query(False, description="Ignorar caché y llamar The
     def abbr(n):
         return name_to_abbr.get((n or "").strip().lower())
     try:
+        if not key:
+            raise RuntimeError("ODDS_API_KEY no configurada — se salta The Odds API")
         import requests
         url = (
             "https://api.the-odds-api.com/v4/sports/baseball_mlb/odds/"
@@ -899,7 +1012,7 @@ def api_odds(force: bool = Query(False, description="Ignorar caché y llamar The
             cached["note"] = "Caché de respaldo (API de cuotas agotada o error)"
             return cached
         return {
-            "configured": not dead,
+            "configured": bool(key) or bool(io_key),
             "error": (
                 "ODDS_API_KEY sin crédito (500/500 free). Plan free se reinicia el día 1 del mes. "
                 "Opciones: upgrade en the-odds-api.com, o espera. KAL usará caché cuando exista."

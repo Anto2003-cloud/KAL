@@ -687,6 +687,30 @@ def _fetch_odds_api_io(key: str) -> dict | None:
                     if hd and ad and 1.05 <= hd <= 25 and 1.05 <= ad <= 25:
                         chosen_name = pref
                         break
+                # Ninguna de las casas preferidas tenía este partido puntual —
+                # usar CUALQUIER casa disponible en vez de dejarlo sin cuota.
+                # (Mismo patrón que ya existía para The Odds API más abajo,
+                # faltaba acá — causaba más 'sin cuota casa' de lo necesario.)
+                if not chosen_name:
+                    for book_name, raw in books.items():
+                        markets = raw if isinstance(raw, list) else []
+                        ml = next((m for m in markets if str(m.get("name") or "").upper() in ("ML", "H2H", "MONEYLINE", "1X2")), None)
+                        if not ml:
+                            ml = markets[0] if markets else None
+                        if not ml:
+                            continue
+                        odds_list = ml.get("odds") or []
+                        if not odds_list:
+                            continue
+                        o0 = odds_list[0] if isinstance(odds_list[0], dict) else {}
+                        try:
+                            hd2 = float(o0.get("home"))
+                            ad2 = float(o0.get("away"))
+                        except (TypeError, ValueError):
+                            continue
+                        if hd2 and ad2 and 1.05 <= hd2 <= 25 and 1.05 <= ad2 <= 25:
+                            hd, ad, chosen_name = hd2, ad2, book_name
+                            break
                 lines.append({
                     "home": home,
                     "away": away,

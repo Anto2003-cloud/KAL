@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { GamePrediction } from '../types';
+import { TEAMS_META } from '../data/mlbData';
 import { findMarketLine, type MarketLine } from '../utils/marketOdds';
 import type { PublicSplit } from '../utils/publicBetting';
 import { findPublicSplit, signalForPick } from '../utils/publicBetting';
@@ -110,7 +111,7 @@ export function ParlayLab({ games, date, history = [], onLockSlip, marketLines =
     let combinedDecimal = 1;
     let legsWithLine = 0;
     const perLeg = slip.legs.map((leg) => {
-      const line = findMarketLine(marketLines, leg.home, leg.away);
+      const line = findMarketLine(marketLines, leg.home, leg.away, TEAMS_META[leg.home]?.name, TEAMS_META[leg.away]?.name);
       const isHomePick = leg.pick === leg.home;
       const dec = line ? (isHomePick ? line.home_decimal : line.away_decimal) : undefined;
       if (dec && dec > 1) {

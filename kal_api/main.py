@@ -617,7 +617,7 @@ MLB_TEAM_NAMES = {
 }
 
 
-def _fetch_polymarket_odds() -> dict | None:
+def _fetch_polymarket_odds(target_date: date | None = None) -> dict | None:
     """
     Polymarket Gamma API — pública, SIN key, SIN límite de cuota mensual
     (a diferencia de The Odds API / Odds-API.io). Documentada oficialmente
@@ -666,9 +666,48 @@ def _fetch_polymarket_odds() -> dict | None:
         return None
 
     import json as _json
+    from datetime import datetime as _dt
+
+    target = target_date or today_ve()
+    target_str = target.isoformat()
+
+    def _event_date(ev: dict) -> str | None:
+        """Extrae la fecha del partido del evento — varios nombres de campo
+        posibles según el tipo de mercado, se prueban todos defensivamente."""
+        for field in ("startDate", "gameStartTime", "eventDate", "endDate"):
+            raw = ev.get(field)
+            if not raw:
+                continue
+            try:
+                # ISO con o sin 'Z', con o sin milisegundos
+                d = _dt.fromisoformat(str(raw).replace("Z", "+00:00"))
+                return d.date().isoformat()
+            except Exception:
+                continue
+        return None
+
+    events_with_date = [ev for ev in events if _event_date(ev)]
+    date_coverage = len(events_with_date) / len(events) if events else 0
 
     lines = []
+    n_wrong_day_skipped = 0
     for ev in events:
+        ev_date = _event_date(ev)
+        # BUG ARREGLADO: antes no se filtraba por fecha en absoluto — se
+        # mezclaban partidos de HOY con partidos de otros días futuros en
+        # la misma lista de cuotas (por eso aparecían ~42 "partidos" en un
+        # día que como mucho tiene 15 juegos de MLB), y esas cuotas de otro
+        # día podían terminar emparejadas con la predicción de HOY del
+        # mismo equipo por pura coincidencia de nombre. Si la mayoría de
+        # eventos SÍ trae fecha parseable, se filtra estricto a target_date.
+        # Si NINGUNO trae fecha (campo distinto al esperado), no se puede
+        # filtrar de forma confiable — se deja pasar todo con aviso, mejor
+        # que devolver cero partidos por un campo que no pude verificar
+        # contra una respuesta real.
+        if date_coverage > 0.3 and ev_date and ev_date != target_str:
+            n_wrong_day_skipped += 1
+            continue
+
         markets = ev.get("markets") or []
         for mk in markets:
             question = str(mk.get("question") or "").lower()
@@ -731,22 +770,34 @@ def _fetch_polymarket_odds() -> dict | None:
                 "home_decimal": round(1 / home_price, 4),
                 "away_decimal": round(1 / away_price, 4),
                 "book": "Polymarket",
+                "game_date": ev_date,
             })
 
     if not lines:
+        _ODDS_DIAG["polymarket"] = {
+            "ok": True,
+            "events_scanned": len(events),
+            "date_coverage": round(date_coverage, 2),
+            "wrong_day_skipped": n_wrong_day_skipped,
+            "mlb_markets_found": 0,
+            "reason": (
+                f"{len(events)} eventos revisados ({n_wrong_day_skipped} descartados por ser de otro día), "
+                "0 reconocidos como partido de MLB de hoy"
+            ),
+        }
         log.warning(
             "polymarket odds: 0 partidos de MLB reconocidos — puede ser que hoy no "
             "haya mercados de MLB abiertos, o que el filtro de nombre de equipo no "
             "esté encajando con el formato real de 'outcomes'"
         )
-        _ODDS_DIAG["polymarket"] = {
-            "ok": True,
-            "events_scanned": len(events),
-            "mlb_markets_found": 0,
-            "reason": f"{len(events)} eventos revisados, 0 reconocidos como partido de MLB — lo más probable es que Polymarket no tenga mercados abiertos para partidos de temporada regular de MLB hoy (sí suele tener para eventos grandes/postemporada)",
-        }
         return None
-    _ODDS_DIAG["polymarket"] = {"ok": True, "events_scanned": len(events), "mlb_markets_found": len(lines)}
+    _ODDS_DIAG["polymarket"] = {
+        "ok": True,
+        "events_scanned": len(events),
+        "date_coverage": round(date_coverage, 2),
+        "wrong_day_skipped": n_wrong_day_skipped,
+        "mlb_markets_found": len(lines),
+    }
     return {
         "configured": True,
         "count": len(lines),
@@ -1099,7 +1150,7 @@ def api_odds(force: bool = Query(False, description="Ignorar caché y llamar The
     # 0.5) Polymarket — gratis, sin key, sin límite de cuota mensual
     # (documentado oficialmente, ver _fetch_polymarket_odds)
     try:
-        poly_payload = _fetch_polymarket_odds()
+        poly_payload = _fetch_polymarket_odds(today_ve())
         if poly_payload and poly_payload.get("with_prices"):
             poly_payload["diag"] = dict(_ODDS_DIAG)
             _save_odds_cache(poly_payload)

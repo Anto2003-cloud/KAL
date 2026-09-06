@@ -106,7 +106,15 @@ export async function fetchMlbMoneylineOdds(_dateIso: string): Promise<MarketLin
   if (!apiBase) return [];
 
   try {
-    const r = await fetch(`${apiBase}/api/odds`, { cache: 'no-store' });
+    // force=true: sin esto, esta llamada usaba el caché de 6h del backend,
+    // que puede tener una respuesta vieja guardada de ANTES de que ESPN/
+    // Polymarket empezaran a funcionar (ej. {lines: []} cacheado durante
+    // la salida de The Odds API). El botón de diagnóstico SÍ usaba
+    // force=true y por eso mostraba datos buenos mientras las tarjetas
+    // reales de partido seguían en blanco — exactamente el bug reportado.
+    // ESPN/Polymarket son gratis y sin límite de cuota, así que ya no hay
+    // motivo real para cachear agresivamente por costo como antes.
+    const r = await fetch(`${apiBase}/api/odds?force=true`, { cache: 'no-store' });
     if (!r.ok) return [];
     const data = await r.json();
     if (!data?.configured || !Array.isArray(data.lines)) return [];

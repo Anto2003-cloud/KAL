@@ -673,7 +673,17 @@ def _fetch_polymarket_odds(target_date: date | None = None) -> dict | None:
 
     def _event_date(ev: dict) -> str | None:
         """Extrae la fecha del partido del evento — varios nombres de campo
-        posibles según el tipo de mercado, se prueban todos defensivamente."""
+        posibles según el tipo de mercado, se prueban todos defensivamente.
+
+        BUG ARREGLADO: tomaba .date() directo del datetime UTC, sin
+        convertir a hora de Venezuela primero. Como la mayoría de partidos
+        de MLB son de noche hora del Este, su horario en UTC cae después
+        de medianoche — 'mañana' en UTC aunque sea 'hoy' en Venezuela. Eso
+        rechazaba el 100% de los partidos como 'de otro día' (confirmado
+        en el diagnóstico: 100 eventos revisados, 100 descartados). Mismo
+        patrón de conversión que today_ve() — restar 4 horas antes de
+        tomar el día calendario, no comparar el día UTC crudo.
+        """
         for field in ("startDate", "gameStartTime", "eventDate", "endDate"):
             raw = ev.get(field)
             if not raw:
@@ -681,7 +691,10 @@ def _fetch_polymarket_odds(target_date: date | None = None) -> dict | None:
             try:
                 # ISO con o sin 'Z', con o sin milisegundos
                 d = _dt.fromisoformat(str(raw).replace("Z", "+00:00"))
-                return d.date().isoformat()
+                if d.tzinfo is None:
+                    d = d.replace(tzinfo=timezone.utc)
+                d_ve = d.astimezone(timezone.utc) + _VE_OFFSET
+                return d_ve.date().isoformat()
             except Exception:
                 continue
         return None

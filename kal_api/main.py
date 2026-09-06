@@ -653,13 +653,16 @@ def _fetch_polymarket_odds() -> dict | None:
             )
         if not r.ok:
             log.warning("polymarket odds: status %s", r.status_code)
+            _ODDS_DIAG["polymarket"] = {"ok": False, "reason": f"http {r.status_code}"}
             return None
         events = r.json()
     except Exception as e:
         log.warning("polymarket odds: %s", e)
+        _ODDS_DIAG["polymarket"] = {"ok": False, "reason": str(e)}
         return None
 
     if not isinstance(events, list):
+        _ODDS_DIAG["polymarket"] = {"ok": False, "reason": f"respuesta no es lista, es {type(events).__name__}"}
         return None
 
     import json as _json
@@ -736,7 +739,14 @@ def _fetch_polymarket_odds() -> dict | None:
             "haya mercados de MLB abiertos, o que el filtro de nombre de equipo no "
             "esté encajando con el formato real de 'outcomes'"
         )
+        _ODDS_DIAG["polymarket"] = {
+            "ok": True,
+            "events_scanned": len(events),
+            "mlb_markets_found": 0,
+            "reason": f"{len(events)} eventos revisados, 0 reconocidos como partido de MLB — lo más probable es que Polymarket no tenga mercados abiertos para partidos de temporada regular de MLB hoy (sí suele tener para eventos grandes/postemporada)",
+        }
         return None
+    _ODDS_DIAG["polymarket"] = {"ok": True, "events_scanned": len(events), "mlb_markets_found": len(lines)}
     return {
         "configured": True,
         "count": len(lines),
@@ -744,6 +754,9 @@ def _fetch_polymarket_odds() -> dict | None:
         "lines": lines,
         "source": "polymarket",
     }
+
+
+_ODDS_DIAG: dict = {}
 
 
 def _fetch_espn_odds() -> dict | None:
@@ -770,14 +783,17 @@ def _fetch_espn_odds() -> dict | None:
         )
         if not r.ok:
             log.warning("espn odds: status %s", r.status_code)
+            _ODDS_DIAG["espn"] = {"ok": False, "reason": f"http {r.status_code}"}
             return None
         data = r.json()
     except Exception as e:
+        _ODDS_DIAG["espn"] = {"ok": False, "reason": str(e)}
         log.warning("espn odds: %s", e)
         return None
 
     events = data.get("events") or []
     if not events:
+        _ODDS_DIAG["espn"] = {"ok": True, "events_found": 0, "reason": "0 eventos MLB hoy (día sin juegos, o schedule vacío)"}
         return None
 
     def american_to_decimal(am) -> float | None:
@@ -835,7 +851,14 @@ def _fetch_espn_odds() -> dict | None:
             "de schema no oficial, revisar homeTeamOdds/moneyLine",
             len(lines),
         )
+        _ODDS_DIAG["espn"] = {
+            "ok": True,
+            "events_found": len(lines),
+            "with_prices": 0,
+            "reason": "eventos MLB encontrados pero ninguno con cuota parseable — el schema de ESPN puede haber cambiado, o no hay odds embebidas para estos partidos",
+        }
         return None
+    _ODDS_DIAG["espn"] = {"ok": True, "events_found": len(lines), "with_prices": with_prices}
     return {
         "configured": True,
         "count": len(lines),
@@ -1047,35 +1070,45 @@ def api_odds(force: bool = Query(False, description="Ignorar caché y llamar The
     dejaba todo sin cuotas incluso teniendo otras fuentes configuradas.
     """
     key = os.environ.get("ODDS_API_KEY") or os.environ.get("THE_ODDS_API_KEY") or ""
+    io_key = os.environ.get("ODDS_API_IO_KEY") or os.environ.get("ODDS_API_IO") or ""
+    _ODDS_DIAG.clear()
+    _ODDS_DIAG["_keys_configured"] = {
+        "ODDS_API_KEY": bool(key),
+        "ODDS_API_IO_KEY": bool(io_key),
+    }
 
     # Caché fresca: no gastar crédito ni pegarle a nada de nuevo
     if not force:
         cached = _load_odds_cache(max_age_sec=6 * 3600)
         if cached and not cached.get("_stale") and cached.get("lines"):
             cached["configured"] = True
+            cached["diag"] = dict(_ODDS_DIAG)
             return cached
 
     # 0) ESPN no oficial — gratis, sin key, primera opción siempre
     try:
         espn_payload = _fetch_espn_odds()
         if espn_payload and espn_payload.get("with_prices"):
+            espn_payload["diag"] = dict(_ODDS_DIAG)
             _save_odds_cache(espn_payload)
             return espn_payload
     except Exception as e:
         log.warning("espn odds top-level: %s", e)
+        _ODDS_DIAG["espn"] = {"ok": False, "reason": f"excepción top-level: {e}"}
 
     # 0.5) Polymarket — gratis, sin key, sin límite de cuota mensual
     # (documentado oficialmente, ver _fetch_polymarket_odds)
     try:
         poly_payload = _fetch_polymarket_odds()
         if poly_payload and poly_payload.get("with_prices"):
+            poly_payload["diag"] = dict(_ODDS_DIAG)
             _save_odds_cache(poly_payload)
             return poly_payload
     except Exception as e:
         log.warning("polymarket odds top-level: %s", e)
+        _ODDS_DIAG["polymarket"] = {"ok": False, "reason": f"excepción top-level: {e}"}
 
     # 1) Odds-API.io (free con key, se reinicia cada hora — casi ilimitado con caché)
-    io_key = os.environ.get("ODDS_API_IO_KEY") or os.environ.get("ODDS_API_IO") or ""
     if io_key:
         try:
             io_payload = _fetch_odds_api_io(io_key)
@@ -1178,9 +1211,11 @@ def api_odds(force: bool = Query(False, description="Ignorar caché y llamar The
                 else err
             )
             cached["note"] = "Caché de respaldo (API de cuotas agotada o error)"
+            cached["diag"] = dict(_ODDS_DIAG)
             return cached
         return {
             "configured": bool(key) or bool(io_key),
+            "diag": dict(_ODDS_DIAG),
             "error": (
                 "ODDS_API_KEY sin crédito (500/500 free). Plan free se reinicia el día 1 del mes. "
                 "Opciones: upgrade en the-odds-api.com, o espera. KAL usará caché cuando exista."

@@ -75,6 +75,30 @@ export function valueForPick(
  * Trae moneylines vía el proxy del backend (/api/odds), que guarda la key
  * de The Odds API del lado del servidor (Railway, env var ODDS_API_KEY).
  */
+export interface OddsDiagnostic {
+  configured?: boolean;
+  count?: number;
+  with_prices?: number;
+  source?: string;
+  error?: string;
+  note?: string;
+  diag?: Record<string, any>;
+}
+
+/** Diagnóstico crudo de /api/odds — para mostrar en la UI por qué no hay cuotas, sin necesitar curl */
+export async function fetchOddsDiagnostic(): Promise<OddsDiagnostic | null> {
+  const apiBase =
+    (import.meta as any).env?.VITE_KAL_API_URL?.replace(/\/$/, '') ||
+    'https://kal-production-ae77.up.railway.app';
+  if (!apiBase) return null;
+  try {
+    const r = await fetch(`${apiBase}/api/odds?force=true`, { cache: 'no-store' });
+    return await r.json();
+  } catch (e: any) {
+    return { error: `No se pudo contactar al backend: ${e?.message || e}` };
+  }
+}
+
 export async function fetchMlbMoneylineOdds(_dateIso: string): Promise<MarketLine[]> {
   const apiBase =
     (import.meta as any).env?.VITE_KAL_API_URL?.replace(/\/$/, '') ||

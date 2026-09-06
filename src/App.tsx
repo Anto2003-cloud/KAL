@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Header } from './components/Header';
+import { OddsDiagnosticPanel } from './components/OddsDiagnosticPanel';
 import { MetricsCards } from './components/MetricsCards';
 import { QuickStartGuide } from './components/QuickStartGuide';
 import { PredictionCard } from './components/PredictionCard';
@@ -339,6 +340,7 @@ export default function App() {
               {' '}{liveNote}
               {!liveMode && ' — Despliega el API en Railway y define VITE_KAL_API_URL para autonomía total.'}
             </div>
+            <OddsDiagnosticPanel />
             {(seasonPhase === 'postseason_window' || seasonPhase === 'stretch_run') && (
               <div className="rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-2.5 text-[11px] text-violet-100">
                 <strong>
